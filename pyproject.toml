@@ -1,0 +1,29 @@
+[build-system]
+requires = [
+    "setuptools>=64.0.0",
+    "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xor"
+version = "1.0.0"
+authors = [{name = "Tyler LaBonte", email = "tlabonte@gatech.edu"}]
+description = "XOR with Spurious Correlation"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = [
+    "matplotlib",
+    "pandas",
+    "numpy",
+    "seaborn",
+    "torch",
+    "tqdm",
+]
+
+[tool.setuptools]
+packages = ["xor"]
