@@ -1,5 +1,6 @@
 """Generator for a dataset with XOR labels and spurious correlation."""
 
+from argparse import Namespace
 from dataclasses import dataclass
 
 import torch
@@ -58,3 +59,48 @@ class Dataset(IterableDataset):
             data, targets = self.generate_data(rng)
             yield data, targets
             count += self.config.m
+
+
+def make_dataset_configs(args: Namespace) -> tuple[DatasetConfig]:
+    """Constructs common dataset configs using parameters from args."""
+
+    train_iid_config = DatasetConfig(
+        name="train-iid",
+        d=args.d,
+        n=args.m * args.steps,
+        m=args.m,
+        seed=args.train_seed,
+    )
+    train_spurious_config = DatasetConfig(
+        name="train-spurious",
+        d=args.d,
+        n=args.m * args.steps,
+        m=args.m,
+        seed=args.train_seed,
+        lmbda=args.lmbda,
+        spurious=True,
+    )
+    test_iid_config = DatasetConfig(
+        name="test-iid",
+        d=args.d,
+        n=args.n_test,
+        m=args.m,
+        seed=args.test_seed,
+        spurious=False,
+    )
+    test_spurious_config = DatasetConfig(
+        name="test-spurious",
+        d=args.d,
+        n=args.n_test,
+        m=args.m,
+        seed=args.test_seed,
+        lmbda=args.lmbda,
+        spurious=True,
+    )
+
+    return (
+        train_iid_config,
+        train_spurious_config,
+        test_iid_config,
+        test_spurious_config,
+    )

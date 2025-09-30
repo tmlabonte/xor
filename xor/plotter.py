@@ -34,7 +34,7 @@ class Plotter:
 
     @staticmethod
     def _make_lineplot(
-        experiment: Experiment,
+        experiments: Sequence[Experiment],
         data: pd.DataFrame,
         named_metric_fn: NamedMetricFn,
         errorbar: str | None = "sd",
@@ -49,15 +49,17 @@ class Plotter:
             errorbar=errorbar,
         )
 
-        plt.title(Plotter._title(experiment))
-
-        img_dir = os.path.join(experiment.config.exp_dir, IMG_DIR)
-        os.makedirs(img_dir, exist_ok=True)
-        plt.savefig(
-            os.path.join(img_dir, f"{named_metric_fn.name}.png"),
-            bbox_inches="tight",
-            dpi=600,
-        )
+        # Save to all experiment directories
+        for experiment in experiments:
+            plt.title("")  # Clears title
+            plt.title(Plotter._title(experiment))
+            img_dir = os.path.join(experiment.config.exp_dir, IMG_DIR)
+            os.makedirs(img_dir, exist_ok=True)
+            plt.savefig(
+                os.path.join(img_dir, f"{named_metric_fn.name}.png"),
+                bbox_inches="tight",
+                dpi=600,
+            )
 
     @staticmethod
     def _access_metrics(
@@ -163,7 +165,7 @@ class Plotter:
 
         # Create the plot and save to disk.
         Plotter._make_lineplot(
-            experiment=experiments[0],
+            experiments=experiments,
             data=data,
             named_metric_fn=named_metric_fn,
             errorbar=errorbar,
