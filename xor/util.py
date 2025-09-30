@@ -1,18 +1,18 @@
-from dataclasses import fields, is_dataclass
+"""Utility functions for XOR experiments."""
+
+from dataclasses import dataclass, fields, is_dataclass
 from typing import Any, Sequence
 
 import numpy as np
 import yaml
 
+@dataclass(frozen=True)
 class FlowSequence:
     """Helper class for dumping long sequences in flow style."""
-
-    def __init__(self, data: Sequence[Any]) -> None:
-        self.data = data
+    data: Sequence[Any]
 
 def _confirm_dataclass(obj: Any) -> None:
     """Confirms obj is a dataclass instance."""
-
     if not is_dataclass(obj):
         raise TypeError(
             "Please set obj to be a dataclass instance."
@@ -32,20 +32,18 @@ def asdict_numpy(obj: Any, max_inline: int = 10) -> Any:
             value = getattr(obj, f.name)
             result[f.name] = asdict_numpy(value)
         return result
-    elif isinstance(obj, np.ndarray):
+    if isinstance(obj, np.ndarray):
         return asdict_numpy(obj.flatten().tolist())
-    elif isinstance(obj, (list, tuple)):
+    if isinstance(obj, (list, tuple)):
         if len(obj) >= max_inline:
             return FlowSequence(type(obj)(asdict_numpy(v) for v in obj))
         return [asdict_numpy(v) for v in obj]
-    elif isinstance(obj, dict):
+    if isinstance(obj, dict):
         return {k: asdict_numpy(v) for k, v in obj.items()}
-    else:
-        return obj
+    return obj
 
 def dump_dataclass_to_yaml(obj: Any, path: str) -> None:
     """Exports dataclass instance to yaml file."""
-
     _confirm_dataclass(obj)
     if not path.endswith(".yaml"):
         path += ".yaml"
@@ -60,5 +58,5 @@ def dump_dataclass_to_yaml(obj: Any, path: str) -> None:
     yaml.add_representer(
         FlowSequence, represent_flowsequence, Dumper=yaml.SafeDumper)
 
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         yaml.safe_dump(asdict_numpy(obj), f, default_flow_style=False)

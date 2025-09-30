@@ -1,3 +1,5 @@
+"""Generator for a dataset with XOR labels and spurious correlation."""
+
 from dataclasses import dataclass
 
 import torch
@@ -15,23 +17,22 @@ class DatasetConfig:
     lmbda: float | None = None # Correlation strength; lower is stronger
     seed: int = 42 # Random seed for dataset generation
 
+# pylint: disable=abstract-method
 class Dataset(IterableDataset):
     """Generator for a dataset with XOR labels and spurious correlation."""
-
     def __init__(self, config: DatasetConfig) -> None:
         """Initializes a dataset."""
-
         super().__init__()
+        print(IterableDataset.__mro__)
         print(config)
         self.name = config.name
         self.config = config
 
-    def _generate_data(
+    def generate_data(
         self,
         rng: torch.Generator,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Generates a single batch of data and targets."""
-
         # Generate i.i.d. data on {±1}^d with target XOR(x_1, x_2).
         randints = torch.randint(
             0, 2, (self.config.m, self.config.d), generator=rng)
@@ -49,7 +50,6 @@ class Dataset(IterableDataset):
 
     def __iter__(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Generates batches of data until total_n batches are reached."""
-
         # Drop last batch if n is not a multiple of m.
         real_n = self.config.n - (self.config.n % self.config.m)
         rng = torch.Generator().manual_seed(self.config.seed)
@@ -57,6 +57,6 @@ class Dataset(IterableDataset):
         count = 0
         while count < real_n:
             # Generate data on-demand to save on memory
-            data, targets = self._generate_data(rng)
+            data, targets = self.generate_data(rng)
             yield data, targets
             count += self.config.m

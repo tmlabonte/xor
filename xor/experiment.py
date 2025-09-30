@@ -1,3 +1,7 @@
+"""Train and test logic for XOR experiments."""
+
+# pylint: disable=invalid-name
+
 from dataclasses import dataclass
 import math
 import os
@@ -16,16 +20,14 @@ from xor.util import dump_dataclass_to_yaml
 @dataclass
 class ExperimentConfig:
     """Configuration for Experiment class."""
-
     name: str # Experiment name
     loss: str # Loss function
     hybrid: bool = False # Whether to use hybrid step
     eta: float = 0.01 # Learning rate
-    out_dir: str = "output" # Top-level output directory
+    exp_dir: str = "output/tmp" # Experiment-level output directory
 
 class Experiment:
     """Class for training and testing of a model on given datasets."""
-
     def __init__(
         self,
         train_dataset: Dataset,
@@ -34,18 +36,16 @@ class Experiment:
         config: ExperimentConfig,
     ) -> None:
         """Initializes an experiment."""
-
         self.config = config
         self._generate_name_and_dir()
-        self.config.name = self.name
         print(config)
-                
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = model.to(self.device)
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = model.to(device)
 
         # Instantiate train and test dataloaders.
         num_workers = 1 # IMPORTANT
-        pin_memory = self.device == "cuda"
+        pin_memory = device == "cuda"
         self.train_loader = DataLoader(
             train_dataset,
             batch_size=None,
@@ -63,11 +63,10 @@ class Experiment:
         ]
 
         # Instantiate loss function and optimizer.
-        self.loss_fns = {
+        self.loss_fn = {
             "lp": self._lp_loss,
             "l0": self._l0_loss,
-        }
-        self.loss_fn = self.loss_fns[config.loss]
+        }[config.loss]
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=config.eta)
 
         # Instantiate metrics object with number of train steps.
@@ -83,17 +82,16 @@ class Experiment:
 
     def _generate_name_and_dir(self) -> None:
         """Generates a unique name and creates output dir."""
-
         name = self.config.name.replace("_", "-")
         slug = coolname.generate_slug(2)
-        self.name = f"{name}_{slug}"
-        self.exp_dir = os.path.join(self.config.out_dir, self.name)
-        os.makedirs(self.exp_dir, exist_ok=True)
+        self.config.name = f"{name}_{slug}"
+        self.config.exp_dir = os.path.join(
+            os.path.dirname(self.config.exp_dir), self.config.name)
+        os.makedirs(self.config.exp_dir, exist_ok=True)
 
     def _dump_configs(self) -> None:
         """Dumps experiment, dataset, and model configs to output dir."""
-
-        config_dir = os.path.join(self.exp_dir, "config")
+        config_dir = os.path.join(self.config.exp_dir, "config")
         os.makedirs(config_dir, exist_ok=True)
 
         dump_dataclass_to_yaml(
@@ -114,17 +112,15 @@ class Experiment:
             self.model.config,
             os.path.join(config_dir, "model.yaml"),
         )
-                
+
     @staticmethod
     def _lp_loss(logits: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """Returns logistic loss of logits against y."""
-
         return (-2 * torch.log(1 / (1 + torch.exp(-y * logits)))).mean()
 
     @staticmethod
     def _l0_loss(logits: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """Returns first-order logistic loss of logits against y."""
-
         return (-2 * math.log(0.5) - y * logits).mean()
 
     def step(
@@ -133,7 +129,6 @@ class Experiment:
         y: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """A single step of loss computation and optimization."""
-
         self.optimizer.zero_grad()
         logits = self.model(X)
         loss = self.loss_fn(logits, y)
@@ -148,15 +143,14 @@ class Experiment:
         y: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Steps with Lp loss for w_sp and L0 loss for everything else."""
-
         self.optimizer.zero_grad()
         logits = self.model(X)
 
-        loss = self.loss_fns["l0"](logits, y)
+        loss = self._l0_loss(logits, y)
         loss.backward(retain_graph=True)
 
         # Compute Lp grads using autograd.
-        sp_loss = self.loss_fns["lp"](logits, y)
+        sp_loss = self._lp_loss(logits, y)
         sp_grad = torch.autograd.grad(
             sp_loss,
             self.model.hidden.weight,
@@ -172,14 +166,13 @@ class Experiment:
 
     def train(self) -> tuple[Model, Metrics]:
         """Trains on the train dataloader."""
-
         print("Training...")
         self.metrics.update_norms(0, self.model.norms())
 
         self.model.train()
         name = self.train_loader.dataset.name
         for step, (X, y) in enumerate(tqdm(self.train_loader, desc=name)):
-            X, y = X.to(self.device), y.to(self.device)
+            X, y = X.to(self.model.device), y.to(self.model.device)
 
             if self.config.hybrid:
                 _, logits = self.hybrid_step(X, y)
@@ -195,11 +188,11 @@ class Experiment:
 
         save_file(
             self.model.state_dict(),
-            os.path.join(self.exp_dir, "model.safetensors"),
+            os.path.join(self.config.exp_dir, "model.safetensors"),
         )
         dump_dataclass_to_yaml(
             self.metrics,
-            os.path.join(self.exp_dir, "metrics.yaml")
+            os.path.join(self.config.exp_dir, "metrics.yaml")
         )
 
         return self.model, self.metrics
@@ -207,12 +200,11 @@ class Experiment:
     @torch.no_grad()
     def _test(self, loader: DataLoader) -> None:
         """Evaluates on a single dataloader."""
-
         name = loader.dataset.name
         correct = 0
         total = 0
         for X, y in tqdm(loader, desc=name):
-            X, y = X.to(self.device), y.to(self.device)
+            X, y = X.to(self.model.device), y.to(self.model.device)
             preds = (self.model(X) > 0).long() * 2 - 1 # Send to {-1, 1}
             correct += (preds == y).sum().item()
             total += y.shape[0]
@@ -221,7 +213,6 @@ class Experiment:
     @torch.no_grad()
     def test(self) -> Metrics:
         """Evaluates on all test dataloaders."""
-
         print("Testing...")
         self.model.eval()
         for loader in self.test_loaders:
@@ -229,7 +220,7 @@ class Experiment:
 
         dump_dataclass_to_yaml(
             self.metrics,
-            os.path.join(self.exp_dir, "metrics.yaml")
+            os.path.join(self.config.exp_dir, "metrics.yaml")
         )
 
         return self.metrics

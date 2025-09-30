@@ -1,3 +1,5 @@
+"""Various helpful plotting functions for XOR experiments."""
+
 from collections.abc import Callable, Sequence
 import os
 
@@ -11,11 +13,9 @@ from xor.metrics import Metrics, NamedMetricFn
 
 class Plotter:
     """Class for various helpful plotting functions."""
-
     @staticmethod
     def _title(experiment: Experiment) -> str:
         """Returns the title for a plot given an experiment."""
-
         dataset_config = experiment.train_loader.dataset.config
         lmbda = dataset_config.lmbda
         lmbda_str = f", $\\lambda={lmbda}$" if lmbda is not None else ""
@@ -37,7 +37,6 @@ class Plotter:
         errorbar: str | None = "sd",
     ) -> None:
         """Creates the plot and saves to disk."""
-
         sns.set_theme()
         sns.lineplot(
             data=data,
@@ -50,7 +49,7 @@ class Plotter:
         plt.title(Plotter._title(experiment))
 
         plt.savefig(
-            os.path.join(experiment.exp_dir, f"{metric_name}.png"),
+            os.path.join(experiment.config.exp_dir, f"{metric_name}.png"),
             bbox_inches="tight",
             dpi=600,
         )
@@ -64,7 +63,6 @@ class Plotter:
         skip_zeroth_step: bool = False,
     ) -> pd.DataFrame:
         """Organizes metrics data into DataFrame."""
-
         # Access metrics for each experiment while excluding given keys.
         exclude_keys = [] if exclude_keys is None else exclude_keys
         metrics = [
@@ -74,10 +72,6 @@ class Plotter:
             }
             for experiment in experiments
         ]
-
-        # Get the number of train steps (optionally counting the zeroth).
-        x_start = 1 if skip_zeroth_step else 0
-        x = np.arange(x_start, next(iter(metrics[0].values())).shape[1])
 
         # Zip all experiment metrics (they should have the same keys).
         metrics_zip = zip(
@@ -89,13 +83,13 @@ class Plotter:
         data = []
         for key, metric in metrics_zip:
             # Wrap named_metric_fn.metric_fn for the current neuron.
-            def metric_fn(neuron):
+            def metric_fn(neuron, metric=metric):
+                start = 1 if skip_zeroth_step else 0
                 computed_metric = named_metric_fn.metric_fn(metric)
-                return computed_metric[neuron, x_start:]
+                return computed_metric[neuron, start:]
 
             n_neurons, n_steps = metric[0].shape
             n_steps = n_steps - 1 if skip_zeroth_step else n_steps
-            steps = np.arange(n_steps)
             for neuron in range(n_neurons):
                 data.append(pd.DataFrame({
                     "step": np.arange(n_steps),
@@ -117,7 +111,7 @@ class Plotter:
         skip_zeroth_step: bool = False,
     ) -> None:
         """Main function for handling different plot requests."""
-        
+        # TODO: Too many arguments.
         # Organize metrics data into DataFrame.
         data = Plotter._organize_data(
             experiments=experiments,
@@ -142,7 +136,6 @@ class Plotter:
         exclude_keys: Sequence[str] = None,
     ) -> None:
         """Plots vector norms against train steps."""
-
         Plotter._plot(
             experiments=[experiment],
             accessor=lambda metrics: metrics.norms,
@@ -161,7 +154,6 @@ class Plotter:
         exclude_keys: Sequence[str] = None,
     ) -> None:
         """Plots vector grads over train steps."""
-
         Plotter._plot(
             experiments=[experiment],
             accessor=lambda metrics: metrics.grads,
@@ -180,7 +172,6 @@ class Plotter:
         exclude_keys: Sequence[str] = None,
     ) -> None:
         """Plots grad errors over train steps."""
-
         # Compute absolute difference between L0 and Lp grads.
         error_fn = NamedMetricFn("grad error", lambda x: np.abs(x[0] - x[1]))
 
