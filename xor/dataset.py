@@ -5,6 +5,8 @@ from torch.utils.data import IterableDataset
 
 @dataclass
 class DatasetConfig:
+    """Configuration for Dataset class."""
+
     name: str # Dataset name
     d: int = 50 # Data dimension
     n: int = 1000 # Number of data
@@ -13,37 +15,12 @@ class DatasetConfig:
     lmbda: float | None = None # Correlation strength; lower is stronger
     seed: int = 42 # Random seed for dataset generation
 
-    """TODO: Switch to pydantic?
-    def __post_init__(self):
-        if not self.spurious and self.d < 2:
-            raise ValueError(
-                "Please set d to be at least 2."
-                f" Current value: {self.d}."
-            )
-        if self.spurious and self.d < 3:
-            raise ValueError(
-                "Please set d to be at least 3 if spurious is True."
-                f" Current value: {self.d}."
-            )
-        if self.n < 1:
-            raise ValueError(
-                "Please set n to be at least 1."
-                f" Current value: {self.n}."
-            )
-        if self.m < 1:
-            raise ValueError(
-                "Please set m to be at least 1."
-                f" Current value: {self.m}."
-            )
-        if self.lmbda and not (0 <= self.lmbda <= 0.5):
-            raise ValueError(
-                "Please set lmbda between 0 and 0.5."
-                f" Current value: {self.lmbda}."
-            )
-    """
-
 class Dataset(IterableDataset):
+    """Generator for a dataset with XOR labels and spurious correlation."""
+
     def __init__(self, config: DatasetConfig) -> None:
+        """Initializes a dataset."""
+
         super().__init__()
         print(config)
         self.name = config.name
@@ -53,6 +30,8 @@ class Dataset(IterableDataset):
         self,
         rng: torch.Generator,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Generates a single batch of data and targets."""
+
         # Generate i.i.d. data on {±1}^d with target XOR(x_1, x_2).
         randints = torch.randint(
             0, 2, (self.config.m, self.config.d), generator=rng)
@@ -69,6 +48,8 @@ class Dataset(IterableDataset):
         return data, targets
 
     def __iter__(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Generates batches of data until total_n batches are reached."""
+
         # Drop last batch if n is not a multiple of m.
         real_n = self.config.n - (self.config.n % self.config.m)
         rng = torch.Generator().manual_seed(self.config.seed)

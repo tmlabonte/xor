@@ -9,8 +9,12 @@ from xor.experiment import Experiment
 from xor.metrics import Metrics, NamedMetricFn
 
 class Plotter:
+    """Class for various helpful plotting functions."""
+
     @staticmethod
     def _title(experiment: Experiment) -> str:
+        """Returns the title for a plot given an experiment."""
+
         dataset_config = experiment.train_loader.dataset.config
         lmbda = dataset_config.lmbda
         lmbda_str = f", $\\lambda={lmbda}$" if lmbda is not None else ""
@@ -31,6 +35,8 @@ class Plotter:
         metric_name: str,
         errorbar: str | None = "sd",
     ) -> None:
+        """Creates the plot and saves to disk."""
+
         sns.set_theme()
         sns.lineplot(
             data=data,
@@ -44,7 +50,7 @@ class Plotter:
 
         dataset_name = experiment.train_loader.dataset.config.name
         import uuid
-        u = str(uuid.uuid4())[:4]
+        u = str(uuid.uuid4())[:4] # TODO
         plt.savefig(
             f"{dataset_name}_{metric_name}_{u}.png",
             bbox_inches="tight",
@@ -60,6 +66,8 @@ class Plotter:
         exclude_keys: Sequence[str] = None,
         skip_zeroth_step: bool = False,
     ) -> pd.DataFrame:
+        """Organizes metrics data into DataFrame."""
+
         # Access metrics for each experiment while excluding given keys.
         exclude_keys = [] if exclude_keys is None else exclude_keys
         metrics = [
@@ -111,6 +119,9 @@ class Plotter:
         exclude_keys: Sequence[str] = None,
         skip_zeroth_step: bool = False,
     ) -> None:
+        """Main function for handling different plot requests."""
+        
+        # Organize metrics data into DataFrame.
         data = Plotter._organize_data(
             experiments=experiments,
             accessor=accessor,
@@ -119,6 +130,7 @@ class Plotter:
             skip_zeroth_step=skip_zeroth_step,
         )
 
+        # Create the plot and save to disk.
         Plotter._make_lineplot(
             experiment=experiments[0],
             data=data,
@@ -133,6 +145,8 @@ class Plotter:
         exclude_keys: Sequence[str] = None,
         skip_zeroth_step: bool = False,
     ) -> None:
+        """Plots vector norms against train steps."""
+
         return Plotter._plot(
             experiments=[experiment],
             accessor=lambda metrics: metrics.norms,
@@ -148,6 +162,8 @@ class Plotter:
         errorbar: str | None = "sd",
         exclude_keys: Sequence[str] = None,
     ) -> None:
+        """Plots vector grads over train steps."""
+
         return Plotter._plot(
             experiments=[experiment],
             accessor=lambda metrics: metrics.grads,
@@ -164,7 +180,11 @@ class Plotter:
         exclude_keys: Sequence[str] = None,
         skip_zeroth_step: bool = False,
     ) -> None:
+        """Plots grad errors over train steps."""
+
+        # Compute absolute difference between L0 and Lp grads.
         error_fn = NamedMetricFn("grad error", lambda x: np.abs(x[0] - x[1]))
+
         return Plotter._plot(
             experiments=experiments,
             accessor=lambda metrics: metrics.grads,

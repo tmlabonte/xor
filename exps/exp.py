@@ -1,14 +1,15 @@
 import math
 
-
 from xor.dataset import Dataset, DatasetConfig
 from xor.experiment import Experiment, ExperimentConfig
 from xor.model import Model, ModelConfig
 from xor.plotter import Plotter
 
 # Set hyperparameters chosen by user.
-d = 1000
-steps = 2000
+#d = 1000
+#steps = 2000
+d=100
+steps=100
 lmbda = 0.2
 n_test = 100000
 train_seed = 0

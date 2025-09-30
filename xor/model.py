@@ -1,23 +1,31 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
-
 import torch
 import torch.nn as nn
 
 @dataclass
 class ModelConfig:
+    """Configuration for the Model class."""
+
     d: int = 50 # Data dimension
     p: int = 10 # Hidden dimension
     spurious: bool = False # Whether w_sp should be tracked
     theta: float = 1 # Initialization scale
 
 class Model(nn.Module):
+    """Class for a single-hidden-layer neural network with metric tracking."""
+
     def __init__(self, config: ModelConfig):
+        """Initializes a model."""
+
         super().__init__()
 
         print(config)
         self.config = config
+
+        # Instantiates architecture and initializes as uniform on the sphere.
         self.hidden = nn.Linear(config.d, config.p, bias=False)
         self.output = nn.Linear(config.p, 1, bias=False)
         self.activation = nn.ReLU()
@@ -43,7 +51,8 @@ class Model(nn.Module):
     @staticmethod
     @torch.no_grad()
     def linear_like(weight, bias=None, grad=None, bias_grad=None) -> nn.Linear:
-        # Instantiate a new Linear layer from given parameters.
+        """Instantiates a new Linear layer from given parameters."""
+
         linear = nn.Linear(
             weight.shape[1], weight.shape[0], bias=bias is not None)
         linear.weight.copy_(weight)
@@ -60,10 +69,14 @@ class Model(nn.Module):
         return linear
 
     def neurons(self) -> list[tuple[torch.Tensor, torch.Tensor]]:
+        """Returns a list of model neuron weights."""
+
         return list(zip(self.output.weight[0], self.hidden.weight))
 
     @torch.no_grad()
     def initialize_parameters(self) -> None:
+        """Initializes parameters as uniform on the sphere."""
+
         # Initialize a_j = ε_j θ where ε_j ~ Unif({±1}).
         sign = torch.sign(torch.randn((self.config.p)))
         self.output.weight[0].copy_(sign * self.config.theta)
@@ -75,6 +88,8 @@ class Model(nn.Module):
 
     @torch.no_grad()
     def w_sigs(self) -> nn.Linear:
+        """Returns projection of each neuron onto the signal component."""
+
         # Get mu_sig for each neuron depending on sign(a).
         mu_sigs = torch.where(
             self.output.weight[0, :, None] >= 0, self.mu_1, self.mu_2)
@@ -96,6 +111,8 @@ class Model(nn.Module):
 
     @torch.no_grad()
     def w_opps(self) -> nn.Linear:
+        """Returns projection of each neuron onto the opposite component."""
+
         # Get mu_opp for each neuron depending on sign(a).
         mu_opps = torch.where(
             self.output.weight[0, :, None] >= 0, self.mu_2, self.mu_1)
@@ -117,6 +134,7 @@ class Model(nn.Module):
 
     @torch.no_grad()
     def w_sps(self) -> nn.Linear:
+        """Returns projection of each neuron onto the spurious component."""
         if self.config.spurious:
             weight = self.hidden.weight[:, 2:3]
             grad = None
@@ -131,6 +149,7 @@ class Model(nn.Module):
 
     @torch.no_grad()
     def w_perps(self) -> nn.Linear:
+        """Returns projection of each neuron onto the perp component."""
         j = 3 if self.config.spurious else 2
         weight = self.hidden.weight[:, j:]
         grad = None
@@ -140,6 +159,8 @@ class Model(nn.Module):
 
     @torch.no_grad()
     def norms(self) -> dict[str, np.ndarray]:
+        """Returns the norm of every weight across vector_fns."""
+
         return {
             vector_name: vector_fn().weight.norm(dim=1).cpu().numpy()
             for vector_name, vector_fn in self.vector_fns.items()
@@ -147,10 +168,40 @@ class Model(nn.Module):
 
     @torch.no_grad()
     def grads(self) -> dict[str, np.ndarray]:
+        """Returns the grad of every weight across vector_fns."""
+
         return {
             vector_name: vector_fn().weight.grad.mean(dim=1).cpu().numpy()
             for vector_name, vector_fn in self.vector_fns.items()
         }
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.output(self.activation(self.hidden(x))).squeeze()
+    @torch.no_grad()
+    def margins(
+        self,
+        X: torch.Tensor,
+        y: torch.Tensor,
+        logits: torch.Tensor | None = None,
+        collate_fn: Callable[[torch.Tensor], float] = torch.max,
+    ) -> dict[str, float]:
+        """Returns the margins of the neural network on a batch.
+
+        Collate_fn can be something like torch.mean or torch.max depending on
+        whether the average or worst-case margin is desired.
+        """
+
+        # Partitions batch into data with/without the spurious correlation.
+        sp = X[:, 2] == y
+        no_sp = X[:, 2] != y
+
+        if logits is None:
+            logits = self(X)
+
+        return {
+            "sp": collate_fn(y[sp] * logits[sp]).item(),
+            "no_sp": collate_fn(y[no_sp] * logits[no_sp]).item(),
+        }
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        """Computes a forward pass through the model."""
+
+        return self.output(self.activation(self.hidden(X))).squeeze()

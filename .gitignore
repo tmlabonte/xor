@@ -1,2 +1,4 @@
 output
 xor.egg-info
+__pycache__
+*.png
