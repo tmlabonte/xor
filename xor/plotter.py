@@ -1,4 +1,5 @@
 from collections.abc import Callable, Sequence
+import os
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -48,15 +49,11 @@ class Plotter:
 
         plt.title(Plotter._title(experiment))
 
-        dataset_name = experiment.train_loader.dataset.config.name
-        import uuid
-        u = str(uuid.uuid4())[:4] # TODO
         plt.savefig(
-            f"{dataset_name}_{metric_name}_{u}.png",
+            os.path.join(experiment.exp_dir, f"{metric_name}.png"),
             bbox_inches="tight",
             dpi=600,
         )
-        plt.clf()
 
     @staticmethod
     def _organize_data(
@@ -143,11 +140,10 @@ class Plotter:
         experiment: Experiment,
         errorbar: str | None = "sd",
         exclude_keys: Sequence[str] = None,
-        skip_zeroth_step: bool = False,
     ) -> None:
         """Plots vector norms against train steps."""
 
-        return Plotter._plot(
+        Plotter._plot(
             experiments=[experiment],
             accessor=lambda metrics: metrics.norms,
             named_metric_fn=NamedMetricFn("norm"),
@@ -155,6 +151,8 @@ class Plotter:
             exclude_keys=exclude_keys,
             skip_zeroth_step=False,
         )
+
+        plt.clf()
 
     @staticmethod
     def plot_grads(
@@ -164,7 +162,7 @@ class Plotter:
     ) -> None:
         """Plots vector grads over train steps."""
 
-        return Plotter._plot(
+        Plotter._plot(
             experiments=[experiment],
             accessor=lambda metrics: metrics.grads,
             named_metric_fn=NamedMetricFn("grad"),
@@ -173,19 +171,20 @@ class Plotter:
             skip_zeroth_step=True,
         )
 
+        plt.clf()
+
     @staticmethod
     def plot_grad_errors(
         experiments: Sequence[Experiment],
         errorbar: str | None = "sd",
         exclude_keys: Sequence[str] = None,
-        skip_zeroth_step: bool = False,
     ) -> None:
         """Plots grad errors over train steps."""
 
         # Compute absolute difference between L0 and Lp grads.
         error_fn = NamedMetricFn("grad error", lambda x: np.abs(x[0] - x[1]))
 
-        return Plotter._plot(
+        Plotter._plot(
             experiments=experiments,
             accessor=lambda metrics: metrics.grads,
             named_metric_fn=error_fn,
@@ -193,3 +192,5 @@ class Plotter:
             exclude_keys=exclude_keys,
             skip_zeroth_step=True,
         )
+
+        plt.clf()

@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 import math
+import os
 
+import coolname
+from safetensors.torch import save_file
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -8,6 +11,7 @@ from tqdm import tqdm
 from xor.dataset import Dataset
 from xor.metrics import Metrics
 from xor.model import Model
+from xor.util import dump_dataclass_to_yaml
 
 @dataclass
 class ExperimentConfig:
@@ -17,6 +21,7 @@ class ExperimentConfig:
     loss: str # Loss function
     hybrid: bool = False # Whether to use hybrid step
     eta: float = 0.01 # Learning rate
+    out_dir: str = "output" # Top-level output directory
 
 class Experiment:
     """Class for training and testing of a model on given datasets."""
@@ -30,10 +35,11 @@ class Experiment:
     ) -> None:
         """Initializes an experiment."""
 
-        print(config)
-        self.name = config.name
         self.config = config
-
+        self._generate_name_and_dir()
+        self.config.name = self.name
+        print(config)
+                
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = model.to(self.device)
 
@@ -56,7 +62,7 @@ class Experiment:
             for test_dataset in test_datasets
         ]
 
-        # Instantiates loss function and optimizer.
+        # Instantiate loss function and optimizer.
         self.loss_fns = {
             "lp": self._lp_loss,
             "l0": self._l0_loss,
@@ -73,6 +79,42 @@ class Experiment:
             train_steps=train_steps + 1, # Add one to log initial norms
         )
 
+        self._dump_configs()
+
+    def _generate_name_and_dir(self) -> None:
+        """Generates a unique name and creates output dir."""
+
+        name = self.config.name.replace("_", "-")
+        slug = coolname.generate_slug(2)
+        self.name = f"{name}_{slug}"
+        self.exp_dir = os.path.join(self.config.out_dir, self.name)
+        os.makedirs(self.exp_dir, exist_ok=True)
+
+    def _dump_configs(self) -> None:
+        """Dumps experiment, dataset, and model configs to output dir."""
+
+        config_dir = os.path.join(self.exp_dir, "config")
+        os.makedirs(config_dir, exist_ok=True)
+
+        dump_dataclass_to_yaml(
+            self.config,
+            os.path.join(config_dir, "experiment.yaml"),
+        )
+
+        dump_dataclass_to_yaml(
+            self.train_loader.dataset.config,
+            os.path.join(config_dir, "train_dataset.yaml"),
+        )
+        for j, test_loader in enumerate(self.test_loaders):
+            dump_dataclass_to_yaml(
+                test_loader.dataset.config,
+                os.path.join(config_dir, f"test_dataset_{j}.yaml"),
+            )
+        dump_dataclass_to_yaml(
+            self.model.config,
+            os.path.join(config_dir, "model.yaml"),
+        )
+                
     @staticmethod
     def _lp_loss(logits: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """Returns logistic loss of logits against y."""
@@ -120,7 +162,7 @@ class Experiment:
             self.model.hidden.weight,
         )[0]
 
-        # Copies Lp grads to w_sp.
+        # Copy Lp grads to w_sp.
         with torch.no_grad():
             self.model.hidden.weight.grad[:, 2] = sp_grad[:, 2]
 
@@ -151,6 +193,15 @@ class Experiment:
                 self.model.margins(X, y, logits=logits),
             )
 
+        save_file(
+            self.model.state_dict(),
+            os.path.join(self.exp_dir, "model.safetensors"),
+        )
+        dump_dataclass_to_yaml(
+            self.metrics,
+            os.path.join(self.exp_dir, "metrics.yaml")
+        )
+
         return self.model, self.metrics
 
     @torch.no_grad()
@@ -175,5 +226,10 @@ class Experiment:
         self.model.eval()
         for loader in self.test_loaders:
             self._test(loader)
+
+        dump_dataclass_to_yaml(
+            self.metrics,
+            os.path.join(self.exp_dir, "metrics.yaml")
+        )
 
         return self.metrics

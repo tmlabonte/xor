@@ -1,4 +1,4 @@
-from __future__ import annotations
+from typing import Self
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -16,8 +16,7 @@ class Metrics:
 
     @classmethod
     def create(
-        cls, vector_names: Sequence[str], p: int, train_steps: int,
-    ) -> Metrics:
+        cls, vector_names: Sequence[str], p: int, train_steps: int) -> Self:
         """Pre-allocates memory for metrics arrays."""
 
         return cls(

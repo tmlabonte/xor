@@ -50,7 +50,12 @@ class Model(nn.Module):
 
     @staticmethod
     @torch.no_grad()
-    def linear_like(weight, bias=None, grad=None, bias_grad=None) -> nn.Linear:
+    def linear_like(
+        weight: torch.Tensor,
+        bias: torch.Tensor | None = None,
+        grad: torch.Tensor | None = None,
+        bias_grad: torch.Tensor | None = None,
+    ) -> nn.Linear:
         """Instantiates a new Linear layer from given parameters."""
 
         linear = nn.Linear(

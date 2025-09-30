@@ -17,9 +17,12 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
+    "coolname",
     "matplotlib",
     "pandas",
     "numpy",
+    "pyyaml",
+    "safetensors",
     "seaborn",
     "torch",
     "tqdm",
