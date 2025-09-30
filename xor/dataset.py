@@ -5,20 +5,24 @@ from dataclasses import dataclass
 import torch
 from torch.utils.data import IterableDataset
 
+
 @dataclass
 class DatasetConfig:
     """Configuration for Dataset class."""
-    name: str # Dataset name
-    d: int = 50 # Data dimension
-    n: int = 1000 # Number of data
-    m: int = 32 # Batch size
-    spurious: bool = False # Whether to generate data with spurious correlation
-    lmbda: float | None = None # Correlation strength; lower is stronger
-    seed: int = 42 # Random seed for dataset generation
+
+    name: str  # Dataset name
+    d: int = 50  # Data dimension
+    n: int = 1000  # Number of data
+    m: int = 32  # Batch size
+    spurious: bool = False  # Whether to generate data with spurious correlation
+    lmbda: float | None = None  # Correlation strength in [0, 0.5]; lower is stronger
+    seed: int = 42  # Random seed for dataset generation
+
 
 # pylint: disable=abstract-method
 class Dataset(IterableDataset):
     """Generator for a dataset with XOR labels and spurious correlation."""
+
     def __init__(self, config: DatasetConfig) -> None:
         """Initializes a dataset."""
         super().__init__()
@@ -26,12 +30,10 @@ class Dataset(IterableDataset):
         self.name = config.name
         self.config = config
 
-    def generate_data(
-        self, rng: torch.Generator) -> tuple[torch.Tensor, torch.Tensor]:
+    def generate_data(self, rng: torch.Generator) -> tuple[torch.Tensor, torch.Tensor]:
         """Generates a single batch of data and targets."""
         # Generate i.i.d. data on {±1}^d with target XOR(x_1, x_2).
-        randints = torch.randint(
-            0, 2, (self.config.m, self.config.d), generator=rng)
+        randints = torch.randint(0, 2, (self.config.m, self.config.d), generator=rng)
         data = (randints * 2 - 1).float()
         targets = -(data[:, 0] * data[:, 1])
 

@@ -9,16 +9,20 @@ import numpy as np
 import torch
 from torch import nn
 
+
 @dataclass
 class ModelConfig:
     """Configuration for the Model class."""
-    d: int = 50 # Data dimension
-    p: int = 10 # Hidden dimension
-    spurious: bool = False # Whether w_sp should be tracked
-    theta: float = 1 # Initialization scale
+
+    d: int = 50  # Data dimension
+    p: int = 10  # Hidden dimension
+    spurious: bool = False  # Whether w_sp should be tracked
+    theta: float = 1  # Initialization scale
+
 
 class Model(nn.Module):
     """Class for a single-hidden-layer neural network with metric tracking."""
+
     def __init__(self, config: ModelConfig):
         """Initializes a model."""
         super().__init__()
@@ -58,8 +62,7 @@ class Model(nn.Module):
         bias_grad: torch.Tensor | None = None,
     ) -> nn.Linear:
         """Instantiates a new Linear layer from given parameters."""
-        linear = nn.Linear(
-            weight.shape[1], weight.shape[0], bias=bias is not None)
+        linear = nn.Linear(weight.shape[1], weight.shape[0], bias=bias is not None)
         linear.weight.copy_(weight)
 
         if bias is not None:
@@ -93,8 +96,7 @@ class Model(nn.Module):
     def w_sigs(self) -> nn.Linear:
         """Returns projection of each neuron onto the signal component."""
         # Get mu_sig for each neuron depending on sign(a).
-        mu_sigs = torch.where(
-            self.output.weight[0, :, None] >= 0, self.mu_1, self.mu_2)
+        mu_sigs = torch.where(self.output.weight[0, :, None] >= 0, self.mu_1, self.mu_2)
 
         # Project each w onto mu_sig. Note that 0.5 = ||mu_sig||^{-2}.
         dot = mu_sigs * self.hidden.weight[:, :2]
@@ -115,8 +117,7 @@ class Model(nn.Module):
     def w_opps(self) -> nn.Linear:
         """Returns projection of each neuron onto the opposite component."""
         # Get mu_opp for each neuron depending on sign(a).
-        mu_opps = torch.where(
-            self.output.weight[0, :, None] >= 0, self.mu_2, self.mu_1)
+        mu_opps = torch.where(self.output.weight[0, :, None] >= 0, self.mu_2, self.mu_1)
 
         # Project each w onto mu_opp. Note that 0.5 = ||mu_opp||^{-2}.
         dot = mu_opps * self.hidden.weight[:, :2]

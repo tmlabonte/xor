@@ -7,26 +7,25 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+
 @dataclass
 class Metrics:
     """Metrics to track over the course of training."""
+
     accuracies: dict[str, float] = field(default_factory=dict)
     norms: dict[str, np.ndarray] = field(default_factory=dict)
     grads: dict[str, np.ndarray] = field(default_factory=dict)
     margins: dict[str, np.ndarray] = field(default_factory=dict)
 
     @classmethod
-    def create(
-        cls, vector_names: Sequence[str], p: int, train_steps: int) -> Self:
+    def create(cls, vector_names: Sequence[str], p: int, train_steps: int) -> Self:
         """Pre-allocates memory for metrics arrays."""
         return cls(
             norms={
-                vector_name: np.zeros((p, train_steps))
-                for vector_name in vector_names
+                vector_name: np.zeros((p, train_steps)) for vector_name in vector_names
             },
             grads={
-                vector_name: np.zeros((p, train_steps))
-                for vector_name in vector_names
+                vector_name: np.zeros((p, train_steps)) for vector_name in vector_names
             },
             margins={
                 "spurious": np.zeros(train_steps),
@@ -49,6 +48,7 @@ class Metrics:
         self.margins["spurious"][step] = margins["spurious"]
         self.margins["not spurious"][step] = margins["not spurious"]
 
+
 @dataclass
 class NamedMetricFn:
     """Helper class for plotting.
@@ -56,6 +56,6 @@ class NamedMetricFn:
     Identity by default, metric_fn can be something like np.abs(x[0] - x[1]).
     """
 
-    name: str # What metric is being tracked, e.g., "norm"
-    key: str # What the metrics are indexed over, e.g., "weight" (for legend)
+    name: str  # What metric is being tracked, e.g., "norm"
+    key: str  # What the metrics are indexed over, e.g., "weight" (for legend)
     metric_fn: Callable[[Sequence[np.ndarray]], np.ndarray] = lambda x: x[0]

@@ -12,8 +12,10 @@ from xor.constants import IMG_DIR
 from xor.experiment import Experiment
 from xor.metrics import Metrics, NamedMetricFn
 
+
 class Plotter:
     """Class for various helpful plotting functions."""
+
     @staticmethod
     def _title(experiment: Experiment) -> str:
         """Returns the title for a plot given an experiment."""
@@ -58,23 +60,33 @@ class Plotter:
         )
 
     @staticmethod
-    def _organize_data(
+    def _access_metrics(
         experiments: Sequence[Experiment],
         accessor: Callable[[Metrics], dict[str, np.ndarray]],
-        named_metric_fn: NamedMetricFn,
-        exclude_keys: Sequence[str] = None,
-        skip_zeroth_step: bool = False,
-    ) -> pd.DataFrame:
-        """Organizes metrics data into DataFrame."""
-        # Access metrics for each experiment while excluding given keys.
+        exclude_keys: Sequence[str] | None = None,
+    ) -> list[dict[str, np.ndarray]]:
+        """Accesses metrics for each experiment while excluding given keys."""
         exclude_keys = [] if exclude_keys is None else exclude_keys
         metrics = [
             {
-                k: n for k, n in accessor(experiment.metrics).items()
+                k: v
+                for k, v in accessor(experiment.metrics).items()
                 if k not in exclude_keys
             }
             for experiment in experiments
         ]
+        return metrics
+
+    @staticmethod
+    def _organize_data(
+        experiments: Sequence[Experiment],
+        accessor: Callable[[Metrics], dict[str, np.ndarray]],
+        named_metric_fn: NamedMetricFn,
+        exclude_keys: Sequence[str] | None = None,
+        skip_zeroth_step: bool = False,
+    ) -> pd.DataFrame:
+        """Organizes metrics data into DataFrame."""
+        metrics = Plotter._access_metrics(experiments, accessor, exclude_keys)
 
         # Zip all experiment metrics (they should have the same keys).
         metrics_zip = zip(
@@ -86,40 +98,46 @@ class Plotter:
         data = []
         start = 1 if skip_zeroth_step else 0
         ndim = next(iter(metrics[0].values())).ndim
-        if ndim == 1: # n_steps
+        if ndim == 1:  # n_steps
             for key, metric in metrics_zip:
-                # Wrap named_metric_fn.metric_fn. Technically not needed, but
-                # good for consistency with the ndim == 2 case.
-                def metric_fn(metric=metric):
-                    computed_metric = named_metric_fn.metric_fn(metric)
-                    return computed_metric[start:]
 
-                n_steps, = metric[0].shape
-                data.append(pd.DataFrame({
-                    "step": np.arange(start, n_steps),
-                    named_metric_fn.name: metric_fn(),
-                    named_metric_fn.key: key,
-                }))
-        elif ndim == 2: # n_neurons x n_steps
+                def metric_fn(metric=metric):
+                    """Wraps named_metric_fn.metric_fn for consistency."""
+                    return named_metric_fn.metric_fn(metric)[start:]
+
+                (n_steps,) = metric[0].shape
+                data.append(
+                    pd.DataFrame(
+                        {
+                            "step": np.arange(start, n_steps),
+                            named_metric_fn.name: metric_fn(),
+                            named_metric_fn.key: key,
+                        }
+                    )
+                )
+        elif ndim == 2:  # n_neurons x n_steps
             for key, metric in metrics_zip:
-                # Wrap named_metric_fn.metric_fn for the current neuron.
+
                 def metric_fn(neuron, metric=metric):
-                    computed_metric = named_metric_fn.metric_fn(metric)
-                    return computed_metric[neuron, start:]
+                    """Wraps named_metric_fn.metric_fn for the current neuron."""
+                    return named_metric_fn.metric_fn(metric)[neuron, start:]
 
                 n_neurons, n_steps = metric[0].shape
                 for neuron in range(n_neurons):
-                    data.append(pd.DataFrame({
-                        "step": np.arange(start, n_steps),
-                        named_metric_fn.name: metric_fn(neuron),
-                        named_metric_fn.key: key,
-                        "neuron": neuron,
-                    }))
+                    data.append(
+                        pd.DataFrame(
+                            {
+                                "step": np.arange(start, n_steps),
+                                named_metric_fn.name: metric_fn(neuron),
+                                named_metric_fn.key: key,
+                                "neuron": neuron,
+                            }
+                        )
+                    )
         else:
-            raise ValueError((
-                "Unexpected number of dimensions of metric."
-                " Current value: {ndim}"
-            ))
+            raise ValueError(
+                f"Unexpected number of dimensions of metric. Current value: {ndim}"
+            )
         data = pd.concat(data)
 
         return data
@@ -130,11 +148,10 @@ class Plotter:
         accessor: Callable[[Metrics], dict[str, np.ndarray]],
         named_metric_fn: NamedMetricFn,
         errorbar: str | None = "sd",
-        exclude_keys: Sequence[str] = None,
+        exclude_keys: Sequence[str] | None = None,
         skip_zeroth_step: bool = False,
     ) -> None:
         """Main function for handling different plot requests."""
-        # TODO: Too many arguments.
         # Organize metrics data into DataFrame.
         data = Plotter._organize_data(
             experiments=experiments,
@@ -156,7 +173,7 @@ class Plotter:
     def plot_norms(
         experiment: Experiment,
         errorbar: str | None = "sd",
-        exclude_keys: Sequence[str] = None,
+        exclude_keys: Sequence[str] | None = None,
     ) -> None:
         """Plots vector norms against train steps."""
         Plotter._plot(
@@ -170,10 +187,11 @@ class Plotter:
 
         plt.clf()
 
+    @staticmethod
     def plot_norms_and_margins(
         experiment: Experiment,
         errorbar: str | None = "sd",
-        exclude_keys: Sequence[str] = None,
+        exclude_keys: Sequence[str] | None = None,
     ) -> None:
         """Plots vector norms and margins against train steps."""
         Plotter._plot(
@@ -200,9 +218,9 @@ class Plotter:
     def plot_grads(
         experiment: Experiment,
         errorbar: str | None = "sd",
-        exclude_keys: Sequence[str] = None,
+        exclude_keys: Sequence[str] | None = None,
     ) -> None:
-        """Plots vector grads over train steps."""
+        """Plots vector grads against train steps."""
         Plotter._plot(
             experiments=[experiment],
             accessor=lambda metrics: metrics.grads,
@@ -217,8 +235,9 @@ class Plotter:
     @staticmethod
     def plot_margins(
         experiment: Experiment,
-        exclude_keys: Sequence[str] = None,
+        exclude_keys: Sequence[str] | None = None,
     ) -> None:
+        """Plots margins against train steps."""
         Plotter._plot(
             experiments=[experiment],
             accessor=lambda metrics: metrics.margins,
@@ -230,17 +249,17 @@ class Plotter:
 
         plt.clf()
 
-
     @staticmethod
     def plot_grad_errors(
         experiments: Sequence[Experiment],
         errorbar: str | None = "sd",
-        exclude_keys: Sequence[str] = None,
+        exclude_keys: Sequence[str] | None = None,
     ) -> None:
-        """Plots grad errors over train steps."""
+        """Plots grad errors against train steps."""
         # Compute absolute difference between L0 and Lp grads.
         error_fn = NamedMetricFn(
-            "grad error", "weight", metric_fn=lambda x: np.abs(x[0] - x[1]))
+            "grad error", "weight", metric_fn=lambda x: np.abs(x[0] - x[1])
+        )
 
         Plotter._plot(
             experiments=experiments,
@@ -257,12 +276,9 @@ class Plotter:
     def plot_all(
         experiment: Experiment,
         errorbar: str | None = "sd",
-        exclude_keys: Sequence[str] = None,
+        exclude_keys: Sequence[str] | None = None,
     ) -> None:
         """Plots all single-experiment metrics."""
-        Plotter.plot_norms(
-            experiment, errorbar=errorbar, exclude_keys=exclude_keys)
-        Plotter.plot_grads(
-            experiment, errorbar=errorbar, exclude_keys=exclude_keys)
-        Plotter.plot_margins(
-            experiment, exclude_keys=exclude_keys)
+        Plotter.plot_norms(experiment, errorbar=errorbar, exclude_keys=exclude_keys)
+        Plotter.plot_grads(experiment, errorbar=errorbar, exclude_keys=exclude_keys)
+        Plotter.plot_margins(experiment, exclude_keys=exclude_keys)

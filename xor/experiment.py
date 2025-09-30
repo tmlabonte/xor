@@ -18,17 +18,22 @@ from xor.metrics import Metrics
 from xor.model import Model
 from xor.util import dump_dataclass_to_yaml
 
+
 @dataclass
 class ExperimentConfig:
     """Configuration for Experiment class."""
-    name: str # Experiment name
-    loss: str # Loss function
-    hybrid: bool = False # Whether to use hybrid step
-    eta: float = 0.01 # Learning rate
-    exp_dir: str = os.path.join(OUT_DIR, TMP_DIR) # Experiment-level output dir
+
+    name: str  # Experiment name
+    loss: str  # Loss function
+    hybrid: bool = False  # Whether to use hybrid step
+    eta: float = 0.01  # Learning rate
+    exp_dir: str = os.path.join(OUT_DIR, TMP_DIR)  # Experiment-level output dir
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"  # Training device
+
 
 class Experiment:
     """Class for training and testing of a model on given datasets."""
+
     def __init__(
         self,
         train_dataset: Dataset,
@@ -37,17 +42,15 @@ class Experiment:
         config: ExperimentConfig,
     ) -> None:
         """Initializes an experiment."""
-        # TODO: Too many instance variables.
         self.config = config
         self._generate_name_and_dir()
         print(config)
 
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = model.to(self.device)
+        self.model = model.to(self.config.device)
 
         # Instantiate train and test dataloaders.
-        num_workers = 1 # IMPORTANT
-        pin_memory = self.device == "cuda"
+        num_workers = 1  # IMPORTANT
+        pin_memory = self.config.device == "cuda"
         self.train_loader = DataLoader(
             train_dataset,
             batch_size=None,
@@ -77,7 +80,7 @@ class Experiment:
         self.metrics = Metrics.create(
             vector_names=self.model.vector_fns.keys(),
             p=self.model.config.p,
-            train_steps=train_steps + 1, # Add one to log initial norms
+            train_steps=train_steps + 1,  # Add one to log initial norms
         )
 
         self._dump_configs()
@@ -88,7 +91,8 @@ class Experiment:
         slug = coolname.generate_slug(2)
         self.config.name = f"{name}_{slug}"
         self.config.exp_dir = os.path.join(
-            os.path.dirname(self.config.exp_dir), self.config.name)
+            os.path.dirname(self.config.exp_dir), self.config.name
+        )
         os.makedirs(self.config.exp_dir, exist_ok=True)
 
     def _dump_configs(self) -> None:
@@ -173,7 +177,7 @@ class Experiment:
         self.model.train()
         name = self.train_loader.dataset.name
         for step, (X, y) in enumerate(tqdm(self.train_loader, desc=name)):
-            X, y = X.to(self.device), y.to(self.device)
+            X, y = X.to(self.config.device), y.to(self.config.device)
 
             if self.config.hybrid:
                 _, logits = self.hybrid_step(X, y)
@@ -192,8 +196,7 @@ class Experiment:
             os.path.join(self.config.exp_dir, "model.safetensors"),
         )
         dump_dataclass_to_yaml(
-            self.metrics,
-            os.path.join(self.config.exp_dir, "metrics.yaml")
+            self.metrics, os.path.join(self.config.exp_dir, "metrics.yaml")
         )
 
         return self.model, self.metrics
@@ -205,8 +208,8 @@ class Experiment:
         correct = 0
         total = 0
         for X, y in tqdm(loader, desc=name):
-            X, y = X.to(self.device), y.to(self.device)
-            preds = (self.model(X) > 0).long() * 2 - 1 # Send to {-1, 1}
+            X, y = X.to(self.config.device), y.to(self.config.device)
+            preds = (self.model(X) > 0).long() * 2 - 1  # Send to {-1, 1}
             correct += (preds == y).sum().item()
             total += y.shape[0]
         self.metrics.accuracies[name] = correct / total
@@ -220,8 +223,7 @@ class Experiment:
             self._test(loader)
 
         dump_dataclass_to_yaml(
-            self.metrics,
-            os.path.join(self.config.exp_dir, "metrics.yaml")
+            self.metrics, os.path.join(self.config.exp_dir, "metrics.yaml")
         )
 
         return self.metrics
