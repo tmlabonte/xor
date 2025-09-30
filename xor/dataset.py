@@ -8,7 +8,6 @@ from torch.utils.data import IterableDataset
 @dataclass
 class DatasetConfig:
     """Configuration for Dataset class."""
-
     name: str # Dataset name
     d: int = 50 # Data dimension
     n: int = 1000 # Number of data
@@ -23,15 +22,12 @@ class Dataset(IterableDataset):
     def __init__(self, config: DatasetConfig) -> None:
         """Initializes a dataset."""
         super().__init__()
-        print(IterableDataset.__mro__)
         print(config)
         self.name = config.name
         self.config = config
 
     def generate_data(
-        self,
-        rng: torch.Generator,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        self, rng: torch.Generator) -> tuple[torch.Tensor, torch.Tensor]:
         """Generates a single batch of data and targets."""
         # Generate i.i.d. data on {±1}^d with target XOR(x_1, x_2).
         randints = torch.randint(

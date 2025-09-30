@@ -196,8 +196,8 @@ class Model(nn.Module):
             logits = self(X)
 
         return {
-            "sp": collate_fn(y[sp] * logits[sp]).item(),
-            "no_sp": collate_fn(y[no_sp] * logits[no_sp]).item(),
+            "spurious": collate_fn(y[sp] * logits[sp]).item(),
+            "not spurious": collate_fn(y[no_sp] * logits[no_sp]).item(),
         }
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:

@@ -12,6 +12,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from xor.constants import CONFIG_DIR, OUT_DIR, TMP_DIR
 from xor.dataset import Dataset
 from xor.metrics import Metrics
 from xor.model import Model
@@ -24,7 +25,7 @@ class ExperimentConfig:
     loss: str # Loss function
     hybrid: bool = False # Whether to use hybrid step
     eta: float = 0.01 # Learning rate
-    exp_dir: str = "output/tmp" # Experiment-level output directory
+    exp_dir: str = os.path.join(OUT_DIR, TMP_DIR) # Experiment-level output dir
 
 class Experiment:
     """Class for training and testing of a model on given datasets."""
@@ -36,16 +37,17 @@ class Experiment:
         config: ExperimentConfig,
     ) -> None:
         """Initializes an experiment."""
+        # TODO: Too many instance variables.
         self.config = config
         self._generate_name_and_dir()
         print(config)
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = model.to(device)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = model.to(self.device)
 
         # Instantiate train and test dataloaders.
         num_workers = 1 # IMPORTANT
-        pin_memory = device == "cuda"
+        pin_memory = self.device == "cuda"
         self.train_loader = DataLoader(
             train_dataset,
             batch_size=None,
@@ -91,7 +93,7 @@ class Experiment:
 
     def _dump_configs(self) -> None:
         """Dumps experiment, dataset, and model configs to output dir."""
-        config_dir = os.path.join(self.config.exp_dir, "config")
+        config_dir = os.path.join(self.config.exp_dir, CONFIG_DIR)
         os.makedirs(config_dir, exist_ok=True)
 
         dump_dataclass_to_yaml(
@@ -134,7 +136,6 @@ class Experiment:
         loss = self.loss_fn(logits, y)
         loss.backward()
         self.optimizer.step()
-
         return loss, logits
 
     def hybrid_step(
@@ -172,7 +173,7 @@ class Experiment:
         self.model.train()
         name = self.train_loader.dataset.name
         for step, (X, y) in enumerate(tqdm(self.train_loader, desc=name)):
-            X, y = X.to(self.model.device), y.to(self.model.device)
+            X, y = X.to(self.device), y.to(self.device)
 
             if self.config.hybrid:
                 _, logits = self.hybrid_step(X, y)
@@ -204,7 +205,7 @@ class Experiment:
         correct = 0
         total = 0
         for X, y in tqdm(loader, desc=name):
-            X, y = X.to(self.model.device), y.to(self.model.device)
+            X, y = X.to(self.device), y.to(self.device)
             preds = (self.model(X) > 0).long() * 2 - 1 # Send to {-1, 1}
             correct += (preds == y).sum().item()
             total += y.shape[0]

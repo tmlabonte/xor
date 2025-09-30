@@ -17,6 +17,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
+    "configargparse",
     "coolname",
     "matplotlib",
     "pandas",

@@ -29,8 +29,8 @@ class Metrics:
                 for vector_name in vector_names
             },
             margins={
-                "sp": np.zeros(train_steps),
-                "no_sp": np.zeros(train_steps),
+                "spurious": np.zeros(train_steps),
+                "not spurious": np.zeros(train_steps),
             },
         )
 
@@ -46,8 +46,8 @@ class Metrics:
 
     def update_margins(self, step: int, margins: dict[str, float]) -> None:
         """Updates margins at the given step."""
-        self.margins["sp"][step] = margins["sp"]
-        self.margins["no_sp"][step] = margins["no_sp"]
+        self.margins["spurious"][step] = margins["spurious"]
+        self.margins["not spurious"][step] = margins["not spurious"]
 
 @dataclass
 class NamedMetricFn:
@@ -56,5 +56,6 @@ class NamedMetricFn:
     Identity by default, metric_fn can be something like np.abs(x[0] - x[1]).
     """
 
-    name: str
+    name: str # What metric is being tracked, e.g., "norm"
+    key: str # What the metrics are indexed over, e.g., "weight" (for legend)
     metric_fn: Callable[[Sequence[np.ndarray]], np.ndarray] = lambda x: x[0]
