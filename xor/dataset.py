@@ -64,14 +64,16 @@ class Dataset(IterableDataset):
 def make_dataset_configs(args: Namespace) -> tuple[DatasetConfig]:
     """Constructs common dataset configs using parameters from args."""
 
-    train_iid_config = DatasetConfig(
+    dataset_configs = {}
+    dataset_configs["train_iid"] = DatasetConfig(
         name="train-iid",
         d=args.d,
         n=args.m * args.steps,
         m=args.m,
         seed=args.train_seed,
+        spurious=False,
     )
-    train_spurious_config = DatasetConfig(
+    dataset_configs["train_spurious"] = DatasetConfig(
         name="train-spurious",
         d=args.d,
         n=args.m * args.steps,
@@ -80,7 +82,7 @@ def make_dataset_configs(args: Namespace) -> tuple[DatasetConfig]:
         lmbda=args.lmbda,
         spurious=True,
     )
-    test_iid_config = DatasetConfig(
+    dataset_configs["test_iid"] = DatasetConfig(
         name="test-iid",
         d=args.d,
         n=args.n_test,
@@ -88,7 +90,7 @@ def make_dataset_configs(args: Namespace) -> tuple[DatasetConfig]:
         seed=args.test_seed,
         spurious=False,
     )
-    test_spurious_config = DatasetConfig(
+    dataset_configs["test_spurious"] = DatasetConfig(
         name="test-spurious",
         d=args.d,
         n=args.n_test,
@@ -98,9 +100,4 @@ def make_dataset_configs(args: Namespace) -> tuple[DatasetConfig]:
         spurious=True,
     )
 
-    return (
-        train_iid_config,
-        train_spurious_config,
-        test_iid_config,
-        test_spurious_config,
-    )
+    return dataset_configs

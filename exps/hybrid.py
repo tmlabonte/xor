@@ -13,9 +13,7 @@ from xor.plotter import Plotter
 def main(args: Namespace) -> None:
     """Train and test on XOR dataset with spurious correlation."""
     # Instantiate dataset, model, and experiment configs.
-    _, train_spurious_config, test_iid_config, test_spurious_config = (
-        make_dataset_configs(args)
-    )
+    dataset_configs = make_dataset_configs(args)
     model_config = ModelConfig(d=args.d, p=args.p, theta=args.theta, spurious=True)
 
     def run_hybrid_experiment(hybrid: bool) -> Experiment:
@@ -26,8 +24,8 @@ def main(args: Namespace) -> None:
         )
 
         experiment = run_experiment(
-            train_spurious_config,
-            [test_iid_config, test_spurious_config],
+            dataset_configs["train_spurious"],
+            [dataset_configs["test_iid"], dataset_configs["test_spurious"]],
             model_config,
             experiment_config,
         )
