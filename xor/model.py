@@ -181,11 +181,11 @@ class Model(nn.Module):
         X: torch.Tensor,
         y: torch.Tensor,
         logits: torch.Tensor | None = None,
-        collate_fn: Callable[[torch.Tensor], float] = torch.max,
+        collate_fn: Callable[[torch.Tensor], float] = torch.min,
     ) -> dict[str, float]:
         """Returns the margins of the neural network on a batch.
 
-        Collate_fn can be something like torch.mean or torch.max depending on
+        Collate_fn can be something like torch.mean or torch.min depending on
         whether the average or worst-case margin is desired.
         """
 

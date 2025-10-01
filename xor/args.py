@@ -45,6 +45,7 @@ def _add_input_args(parser: Parser) -> Parser:
     )
     parser.add(
         "--lmbda",
+        "--lambda",
         default=0.2,
         type=float,
         help=(

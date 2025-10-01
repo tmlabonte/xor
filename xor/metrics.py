@@ -12,6 +12,7 @@ import numpy as np
 class Metrics:
     """Metrics to track over the course of training."""
 
+    losses: dict[str, np.ndarray] = field(default_factory=dict)
     accuracies: dict[str, float] = field(default_factory=dict)
     norms: dict[str, np.ndarray] = field(default_factory=dict)
     grads: dict[str, np.ndarray] = field(default_factory=dict)
@@ -21,6 +22,7 @@ class Metrics:
     def create(cls, vector_names: Sequence[str], p: int, train_steps: int) -> Self:
         """Pre-allocates memory for metrics arrays."""
         return cls(
+            losses={"train loss": np.zeros(train_steps)},
             norms={
                 vector_name: np.zeros((p, train_steps)) for vector_name in vector_names
             },
@@ -32,6 +34,11 @@ class Metrics:
                 "not spurious": np.zeros(train_steps),
             },
         )
+
+    def update_losses(self, step: int, losses: dict[str, float]) -> None:
+        """Updates loss at the given step."""
+        for loss_type, loss in losses.items():
+            self.losses[loss_type][step] = loss
 
     def update_norms(self, step: int, norms: dict[str, np.ndarray]) -> None:
         """Updates norms of each vector at the given step."""
@@ -45,8 +52,8 @@ class Metrics:
 
     def update_margins(self, step: int, margins: dict[str, float]) -> None:
         """Updates margins at the given step."""
-        self.margins["spurious"][step] = margins["spurious"]
-        self.margins["not spurious"][step] = margins["not spurious"]
+        for data_subset, margin in margins.items():
+            self.margins[data_subset][step] = margin
 
 
 @dataclass

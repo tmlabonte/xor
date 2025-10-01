@@ -180,10 +180,11 @@ class Experiment:
             X, y = X.to(self.config.device), y.to(self.config.device)
 
             if self.config.hybrid:
-                _, logits = self.hybrid_step(X, y)
+                loss, logits = self.hybrid_step(X, y)
             else:
-                _, logits = self.step(X, y)
+                loss, logits = self.step(X, y)
 
+            self.metrics.update_losses(step + 1, {"train loss": loss.item()})
             self.metrics.update_norms(step + 1, self.model.norms())
             self.metrics.update_grads(step + 1, self.model.grads())
             self.metrics.update_margins(

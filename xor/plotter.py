@@ -172,6 +172,22 @@ class Plotter:
         )
 
     @staticmethod
+    def plot_losses(
+        experiment: Experiment,
+        exclude_keys: Sequence[str] | None = None,
+    ) -> None:
+        """Plots losses against train steps."""
+        Plotter._plot(
+            experiments=[experiment],
+            accessor=lambda metrics: metrics.losses,
+            named_metric_fn=NamedMetricFn("loss", "type"),
+            exclude_keys=exclude_keys,
+            skip_zeroth_step=True,
+        )
+
+        plt.clf()
+
+    @staticmethod
     def plot_norms(
         experiment: Experiment,
         errorbar: str | None = "sd",
@@ -185,33 +201,6 @@ class Plotter:
             errorbar=errorbar,
             exclude_keys=exclude_keys,
             skip_zeroth_step=False,
-        )
-
-        plt.clf()
-
-    @staticmethod
-    def plot_norms_and_margins(
-        experiment: Experiment,
-        errorbar: str | None = "sd",
-        exclude_keys: Sequence[str] | None = None,
-    ) -> None:
-        """Plots vector norms and margins against train steps."""
-        Plotter._plot(
-            experiments=[experiment],
-            accessor=lambda metrics: metrics.norms,
-            named_metric_fn=NamedMetricFn("norm", "weight"),
-            errorbar=errorbar,
-            exclude_keys=exclude_keys,
-            skip_zeroth_step=False,
-        )
-
-        Plotter._plot(
-            experiments=[experiment],
-            accessor=lambda metrics: metrics.margins,
-            named_metric_fn=NamedMetricFn("margin", "subset"),
-            errorbar=None,
-            exclude_keys=exclude_keys,
-            skip_zeroth_step=True,
         )
 
         plt.clf()
@@ -281,6 +270,7 @@ class Plotter:
         exclude_keys: Sequence[str] | None = None,
     ) -> None:
         """Plots all single-experiment metrics."""
+        Plotter.plot_losses(experiment, exclude_keys=exclude_keys)
         Plotter.plot_norms(experiment, errorbar=errorbar, exclude_keys=exclude_keys)
         Plotter.plot_grads(experiment, errorbar=errorbar, exclude_keys=exclude_keys)
         Plotter.plot_margins(experiment, exclude_keys=exclude_keys)
