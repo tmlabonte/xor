@@ -37,29 +37,45 @@ class Plotter:
         experiments: Sequence[Experiment],
         data: pd.DataFrame,
         named_metric_fn: NamedMetricFn,
-        errorbar: str | None = "sd",
+        errorbar: str | None = None,
     ) -> None:
         """Creates the plot and saves to disk."""
-        sns.set_theme()
-        sns.lineplot(
-            data=data,
-            x="step",
-            y=named_metric_fn.name,
-            hue=named_metric_fn.key,
-            errorbar=errorbar,
-        )
 
-        # Save to all experiment directories
-        for experiment in experiments:
-            plt.title("")  # Clears title
-            plt.title(Plotter._title(experiment))
-            img_dir = os.path.join(experiment.config.exp_dir, IMG_DIR)
-            os.makedirs(img_dir, exist_ok=True)
-            plt.savefig(
-                os.path.join(img_dir, f"{named_metric_fn.name}.png"),
-                bbox_inches="tight",
-                dpi=600,
+        # Automatically plot at full steps and 1/4 steps.
+        sns.set_theme()
+        for ratio in [0.25, 1.0]:
+            thresh = int(ratio * data["step"].max())
+
+            # Plot every single neuron if they exist and errorbar is not specified.
+            # Otherwise aggregate over neurons to plot mean and errorbar.
+            sns.lineplot(
+                # data=data[data["step"] <= thresh],
+                data=data.loc[data["step"] <= thresh].reset_index(drop=True),
+                x="step",
+                y=named_metric_fn.name,
+                hue=named_metric_fn.key,
+                errorbar=errorbar,
+                units="neuron" if "neuron" in data.columns else None,
+                estimator=(
+                    None if errorbar is None and "neuron" in data.columns else "mean"
+                ),
             )
+
+            # Save to all experiment directories.
+            for experiment in experiments:
+                plt.title("")  # Clears title
+                plt.title(Plotter._title(experiment))
+                img_dir = os.path.join(
+                    experiment.config.exp_dir, IMG_DIR, f"step={thresh}"
+                )
+                os.makedirs(img_dir, exist_ok=True)
+                plt.savefig(
+                    os.path.join(img_dir, f"{named_metric_fn.name}.png"),
+                    bbox_inches="tight",
+                    dpi=600,
+                )
+
+            plt.clf()
 
     @staticmethod
     def _access_metrics(
@@ -149,7 +165,7 @@ class Plotter:
         experiments: Sequence[Experiment],
         accessor: Callable[[Metrics], dict[str, np.ndarray]],
         named_metric_fn: NamedMetricFn,
-        errorbar: str | None = "sd",
+        errorbar: str | None = None,
         exclude_keys: Sequence[str] | None = None,
         skip_zeroth_step: bool = False,
     ) -> None:
@@ -185,12 +201,10 @@ class Plotter:
             skip_zeroth_step=True,
         )
 
-        plt.clf()
-
     @staticmethod
     def plot_norms(
         experiment: Experiment,
-        errorbar: str | None = "sd",
+        errorbar: str | None = None,
         exclude_keys: Sequence[str] | None = None,
     ) -> None:
         """Plots vector norms against train steps."""
@@ -203,12 +217,10 @@ class Plotter:
             skip_zeroth_step=False,
         )
 
-        plt.clf()
-
     @staticmethod
     def plot_grads(
         experiment: Experiment,
-        errorbar: str | None = "sd",
+        errorbar: str | None = None,
         exclude_keys: Sequence[str] | None = None,
     ) -> None:
         """Plots vector grads against train steps."""
@@ -220,8 +232,6 @@ class Plotter:
             exclude_keys=exclude_keys,
             skip_zeroth_step=True,
         )
-
-        plt.clf()
 
     @staticmethod
     def plot_margins(
@@ -238,12 +248,10 @@ class Plotter:
             skip_zeroth_step=True,
         )
 
-        plt.clf()
-
     @staticmethod
     def plot_grad_errors(
         experiments: Sequence[Experiment],
-        errorbar: str | None = "sd",
+        errorbar: str | None = None,
         exclude_keys: Sequence[str] | None = None,
     ) -> None:
         """Plots grad errors against train steps."""
@@ -261,12 +269,10 @@ class Plotter:
             skip_zeroth_step=True,
         )
 
-        plt.clf()
-
     @staticmethod
     def plot_all(
         experiment: Experiment,
-        errorbar: str | None = "sd",
+        errorbar: str | None = None,
         exclude_keys: Sequence[str] | None = None,
     ) -> None:
         """Plots all single-experiment metrics."""

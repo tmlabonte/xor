@@ -28,7 +28,7 @@ def run_experiment(
     metrics = experiment.test()
 
     # Print accuracies and plot metrics of interest.
-    print(metrics.accuracies)
+    print(f"Accuracies: {metrics.accuracies}")
     Plotter.plot_all(experiment)
 
     return experiment
@@ -39,8 +39,12 @@ def main(args: Namespace) -> None:
     # Instantiate dataset, model, and experiment configs.
     dataset_configs = make_dataset_configs(args)
     model_config = ModelConfig(d=args.d, p=args.p, theta=args.theta, spurious=True)
+    key = "-hybrid" if args.hybrid else ""
     experiment_config = ExperimentConfig(
-        name="xor-spurious-lp", loss=args.loss, eta=args.eta
+        name=f"xor-spurious-{args.loss}{key}",
+        loss=args.loss,
+        eta=args.eta,
+        hybrid=args.hybrid,
     )
 
     # Runs the experiment.
