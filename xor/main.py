@@ -2,8 +2,12 @@
 
 from argparse import Namespace
 from collections.abc import Sequence
+import os
+
+from loguru import logger
 
 from xor.args import parse_args
+from xor.constants import IMG_DIR
 from xor.dataset import Dataset, DatasetConfig, make_dataset_configs
 from xor.experiment import Experiment, ExperimentConfig
 from xor.model import Model, ModelConfig
@@ -26,10 +30,12 @@ def run_experiment(
     # Train and evaluate the model.
     experiment.train()
     metrics = experiment.test()
+    logger.info(f"Accuracies: {metrics.accuracies}")
 
-    # Print accuracies and plot metrics of interest.
-    print(f"Accuracies: {metrics.accuracies}")
+    # Plot metrics of interest and save to disk.
     Plotter.plot_all(experiment)
+    plot_dir = os.path.join(experiment.config.exp_dir, IMG_DIR)
+    logger.info(f"Plots saved to {plot_dir}")
 
     return experiment
 

@@ -1,14 +1,16 @@
 """Train and test logic for XOR experiments."""
 
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name # Allow X, y naming.
 
 from dataclasses import dataclass
 import math
 import os
 
 import coolname
-from safetensors.torch import save_file
+from loguru import logger
+import safetensors.torch
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -28,6 +30,7 @@ class ExperimentConfig:
     hybrid: bool = False  # Whether to use hybrid step
     eta: float = 0.01  # Learning rate
     exp_dir: str = os.path.join(OUT_DIR, TMP_DIR)  # Experiment-level output dir
+    margin: str = "mean"  # Whether to track the mean or min margin.
     device: str = "cuda" if torch.cuda.is_available() else "cpu"  # Training device
 
 
@@ -44,7 +47,7 @@ class Experiment:
         """Initializes an experiment."""
         self.config = config
         self._generate_name_and_dir()
-        print(config)
+        logger.info(config)
 
         self.model = model.to(self.config.device)
 
@@ -74,13 +77,18 @@ class Experiment:
         }[config.loss]
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=config.eta)
 
+        # Instantiate margin tracking function.
+        self.margin_fn = {
+            "mean": torch.mean,
+            "min": torch.min,
+        }[config.margin]
+
         # Instantiate metrics object with number of train steps.
         # This allocates memory for all the metrics tensors.
-        train_steps = math.ceil(train_dataset.config.n / train_dataset.config.m)
         self.metrics = Metrics.create(
-            vector_names=self.model.vector_fns.keys(),
+            keys=self.model.vector_fns.keys(),
             p=self.model.config.p,
-            train_steps=train_steps + 1,  # Add one to log initial norms
+            train_steps=len(train_dataset) + 1,  # Add one to log initial norms
         )
 
         self._dump_configs()
@@ -100,29 +108,25 @@ class Experiment:
         config_dir = os.path.join(self.config.exp_dir, CONFIG_DIR)
         os.makedirs(config_dir, exist_ok=True)
 
-        dump_dataclass_to_yaml(
-            self.config,
-            os.path.join(config_dir, "experiment.yaml"),
-        )
-
-        dump_dataclass_to_yaml(
-            self.train_loader.dataset.config,
-            os.path.join(config_dir, "train_dataset.yaml"),
-        )
+        configs = {
+            "experiment": self.config,
+            "train_dataset": self.train_loader.dataset.config,
+            "model": self.model.config,
+        }
         for j, test_loader in enumerate(self.test_loaders):
+            configs[f"test_dataset_{j}"] = test_loader.dataset.config
+
+        for name, config in configs.items():
             dump_dataclass_to_yaml(
-                test_loader.dataset.config,
-                os.path.join(config_dir, f"test_dataset_{j}.yaml"),
+                config,
+                os.path.join(config_dir, f"{name}.yaml"),
             )
-        dump_dataclass_to_yaml(
-            self.model.config,
-            os.path.join(config_dir, "model.yaml"),
-        )
+        logger.info(f"Configs saved to {config_dir}")
 
     @staticmethod
     def _lp_loss(logits: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """Returns logistic loss of logits against y."""
-        return (-2 * torch.log(1 / (1 + torch.exp(-y * logits)))).mean()
+        return (-2 * F.logsigmoid(y * logits)).mean()  # pylint: disable=not-callable
 
     @staticmethod
     def _l0_loss(logits: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -171,8 +175,8 @@ class Experiment:
 
     def train(self) -> tuple[Model, Metrics]:
         """Trains on the train dataloader."""
-        print("Training...")
-        self.metrics.update_norms(0, self.model.norms())
+        logger.info("Training...")
+        self.metrics.record(0, norms=self.model.norms())
 
         self.model.train()
         name = self.train_loader.dataset.name
@@ -184,21 +188,37 @@ class Experiment:
             else:
                 loss, logits = self.step(X, y)
 
-            self.metrics.update_losses(step + 1, {"train loss": loss.item()})
-            self.metrics.update_norms(step + 1, self.model.norms())
-            self.metrics.update_grads(step + 1, self.model.grads())
-            self.metrics.update_margins(
-                step + 1,
-                self.model.margins(X, y, logits=logits),
+            # Compute theoretical predictions for model weights.
+            self.model.step_preds(
+                self.config.loss,
+                self.config.eta,
+                self.train_loader.dataset.config.lmbda,
+                X,
+                y,
+                logits=logits,
             )
 
-        save_file(
-            self.model.state_dict(),
-            os.path.join(self.config.exp_dir, "model.safetensors"),
-        )
-        dump_dataclass_to_yaml(
-            self.metrics, os.path.join(self.config.exp_dir, "metrics.yaml")
-        )
+            # Record relevant step metrics in the self.metrics object.
+            self.metrics.record(
+                step + 1,
+                losses={"train loss": loss.item()},
+                norms=self.model.norms(),
+                grads=self.model.grads(),
+                margins=self.model.margins(
+                    X, y, logits=logits, collate_fn=self.margin_fn
+                ),
+                preds=self.model.preds_norms(),
+            )
+
+        # Save model weights to disk.
+        weights_path = os.path.join(self.config.exp_dir, "model.safetensors")
+        safetensors.torch.save_file(self.model.state_dict(), weights_path)
+        logger.info(f"Model weights saved to {weights_path}")
+
+        # Saves train metrics to disk.
+        metrics_path = os.path.join(self.config.exp_dir, "metrics.yaml")
+        dump_dataclass_to_yaml(self.metrics, metrics_path)
+        logger.info(f"Train metrics saved to {metrics_path}")
 
         return self.model, self.metrics
 
@@ -218,13 +238,14 @@ class Experiment:
     @torch.no_grad()
     def test(self) -> Metrics:
         """Evaluates on all test dataloaders."""
-        print("Testing...")
+        logger.info("Testing...")
         self.model.eval()
         for loader in self.test_loaders:
             self._test(loader)
 
-        dump_dataclass_to_yaml(
-            self.metrics, os.path.join(self.config.exp_dir, "metrics.yaml")
-        )
+        # Save test metrics to disk.
+        metrics_path = os.path.join(self.config.exp_dir, "metrics.yaml")
+        dump_dataclass_to_yaml(self.metrics, metrics_path)
+        logger.info(f"Test metrics saved to {metrics_path}")
 
         return self.metrics

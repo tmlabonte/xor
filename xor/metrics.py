@@ -17,43 +17,62 @@ class Metrics:
     norms: dict[str, np.ndarray] = field(default_factory=dict)
     grads: dict[str, np.ndarray] = field(default_factory=dict)
     margins: dict[str, np.ndarray] = field(default_factory=dict)
+    preds: dict[str, np.ndarray] = field(default_factory=dict)
 
     @classmethod
-    def create(cls, vector_names: Sequence[str], p: int, train_steps: int) -> Self:
+    def create(cls, keys: Sequence[str], p: int, train_steps: int) -> Self:
         """Pre-allocates memory for metrics arrays."""
+
+        def make_array() -> dict[str, np.ndarray]:
+            return {k: np.zeros((p, train_steps)) for k in keys}
+
         return cls(
             losses={"train loss": np.zeros(train_steps)},
-            norms={
-                vector_name: np.zeros((p, train_steps)) for vector_name in vector_names
-            },
-            grads={
-                vector_name: np.zeros((p, train_steps)) for vector_name in vector_names
-            },
+            norms=make_array(),
+            grads=make_array(),
             margins={
                 "spurious": np.zeros(train_steps),
                 "not spurious": np.zeros(train_steps),
             },
+            preds=make_array(),
         )
 
-    def update_losses(self, step: int, losses: dict[str, float]) -> None:
-        """Updates loss at the given step."""
-        for loss_type, loss in losses.items():
-            self.losses[loss_type][step] = loss
+    def _record(
+        self, storage: dict, step: int, values: dict[str, np.ndarray | float]
+    ) -> None:
+        """Records values into storage dict at the given step."""
+        for key, val in values.items():
+            target = storage[key]
+            if isinstance(target, np.ndarray) and target.ndim == 2:
+                target[:, step] = val
+            else:
+                target[step] = val
 
-    def update_norms(self, step: int, norms: dict[str, np.ndarray]) -> None:
-        """Updates norms of each vector at the given step."""
-        for vector_name, norm_array in norms.items():
-            self.norms[vector_name][:, step] = norm_array
+    def record(self, step: int, **metrics: dict[str, np.ndarray | float]) -> None:
+        """Records any combination of metrics at a given step.
 
-    def update_grads(self, step: int, grads: dict[str, np.ndarray]) -> None:
-        """Updates grads of each vector at the given step."""
-        for vector_name, grad_array in grads.items():
-            self.grads[vector_name][:, step] = grad_array
+        Example usage:
+            metrics.record(
+                step,
+                losses={"train loss": 0.25},
+                norms={"w": np.ones(3)},
+                margins={"spurious": 0.1}
+            )
+        """
 
-    def update_margins(self, step: int, margins: dict[str, float]) -> None:
-        """Updates margins at the given step."""
-        for data_subset, margin in margins.items():
-            self.margins[data_subset][step] = margin
+        storage_map = {
+            "losses": self.losses,
+            "accuracies": self.accuracies,
+            "norms": self.norms,
+            "grads": self.grads,
+            "margins": self.margins,
+            "preds": self.preds,
+        }
+
+        for metric_name, values in metrics.items():
+            storage = storage_map.get(metric_name)
+            if storage is not None:
+                self._record(storage, step, values)
 
 
 @dataclass

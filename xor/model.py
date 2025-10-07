@@ -1,13 +1,17 @@
 """Single-hidden-layer neural network for XOR experiments."""
 
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name # Allow X, y naming.
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import math
 
+from loguru import logger
 import numpy as np
 import torch
 from torch import nn
+
+from xor.util import sigmoid
 
 
 @dataclass
@@ -27,7 +31,7 @@ class Model(nn.Module):
         """Initializes a model."""
         super().__init__()
 
-        print(config)
+        logger.info(config)
         self.config = config
 
         # Instantiates architecture and initializes as uniform on the sphere.
@@ -52,6 +56,12 @@ class Model(nn.Module):
         }
         if not self.config.spurious:
             self.vector_fns.pop("w_sp")
+
+        # Initialize predicted weights.
+        self.preds = {
+            vector_name: vector_fn()
+            for vector_name, vector_fn in self.vector_fns.items()
+        }
 
     @staticmethod
     @torch.no_grad()
@@ -168,6 +178,14 @@ class Model(nn.Module):
         }
 
     @torch.no_grad()
+    def preds_norms(self) -> dict[str, np.ndarray]:
+        """Returns the norm of every predicted weight."""
+        return {
+            vector_name: vector.weight.norm(dim=1).cpu().numpy()
+            for vector_name, vector in self.preds.items()
+        }
+
+    @torch.no_grad()
     def grads(self) -> dict[str, np.ndarray]:
         """Returns the grad of every weight across vector_fns."""
         return {
@@ -181,7 +199,7 @@ class Model(nn.Module):
         X: torch.Tensor,
         y: torch.Tensor,
         logits: torch.Tensor | None = None,
-        collate_fn: Callable[[torch.Tensor], float] = torch.min,
+        collate_fn: Callable[[torch.Tensor], float] = torch.mean,
     ) -> dict[str, float]:
         """Returns the margins of the neural network on a batch.
 
@@ -199,6 +217,74 @@ class Model(nn.Module):
         return {
             "spurious": collate_fn(y[sp] * logits[sp]).item(),
             "not spurious": collate_fn(y[no_sp] * logits[no_sp]).item(),
+        }
+
+    @torch.no_grad()
+    def step_preds(
+        self,
+        loss: str,
+        eta: float,
+        lmbda: float,
+        X: torch.Tensor,
+        y: torch.Tensor,
+        logits: torch.Tensor | None = None,
+    ) -> None:
+        """Updates the next-step weights according to theoretical predictions."""
+
+        if not self.config.spurious:
+            raise NotImplementedError()
+
+        # Compute norms and margins for the current batch.
+        norms = self.preds_norms()
+        margins = self.margins(X, y, logits=logits, collate_fn=torch.mean)
+        full_norm = torch.cat(
+            (
+                self.preds["w_sig"].weight + self.preds["w_opp"].weight,
+                self.preds["w_sp"].weight,
+                self.preds["w_perp"].weight,
+            ),
+            dim=1,
+        ).norm(dim=1)
+
+        if loss == "l0":
+            # 1 / sqrt(2π) * ||w|| / ||w_perp|| * exp(-||w_sp||^2 / 2||w_perp||^2).
+            sig_opp_term = (1 / math.sqrt(2 * math.pi)) * full_norm / norms["w_perp"]
+            sig_opp_term *= torch.tensor(
+                np.exp(-norms["w_sp"] ** 2 / (2 * norms["w_perp"] ** 2))
+            )
+
+            # Convert from (neurons,) to (neurons, 2)
+            sig_opp_term = torch.column_stack((sig_opp_term, sig_opp_term))
+
+            # a (0.5 - lambda) / w_sp, assumes V = 0 and a = ||w||.
+            sp_term = full_norm * (0.5 - lmbda)
+            sp_term /= self.preds["w_sp"].weight.squeeze()
+
+            grads = {
+                "w_sig": self.preds["w_sig"].weight * sig_opp_term,
+                "w_opp": self.preds["w_opp"].weight * -sig_opp_term,
+                "w_sp": self.preds["w_sp"].weight * sp_term.unsqueeze(-1),
+                "w_perp": 0,
+            }
+        elif loss == "lp":
+            # a (1 - lambda - sigmoid(margin)) / w_sp, assumes V = 0 and a = ||w||.
+            sp_term = full_norm * (1 - lmbda - sigmoid(margins["spurious"]))
+            sp_term /= self.preds["w_sp"].weight.squeeze()
+
+            grads = {
+                "w_sig": 0,
+                "w_opp": 0,
+                "w_sp": self.preds["w_sp"].weight * sp_term.unsqueeze(-1),
+                "w_perp": 0,
+            }
+        else:
+            raise ValueError(
+                ("Please set loss to 'lp' or 'l0'." f" Current value: {loss}")
+            )
+
+        self.preds = {
+            vector_name: Model.linear_like(vector.weight + eta * grads[vector_name])
+            for vector_name, vector in self.preds.items()
         }
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:

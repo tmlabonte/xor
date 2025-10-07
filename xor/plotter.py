@@ -249,6 +249,22 @@ class Plotter:
         )
 
     @staticmethod
+    def plot_preds(
+        experiment: Experiment,
+        errorbar: str | None = None,
+        exclude_keys: Sequence[str] | None = None,
+    ) -> None:
+        """Plots vector norm predictions against train steps."""
+        Plotter._plot(
+            experiments=[experiment],
+            accessor=lambda metrics: metrics.preds,
+            named_metric_fn=NamedMetricFn("pred", "weight"),
+            errorbar=errorbar,
+            exclude_keys=exclude_keys,
+            skip_zeroth_step=True,
+        )
+
+    @staticmethod
     def plot_grad_errors(
         experiments: Sequence[Experiment],
         errorbar: str | None = None,
@@ -280,3 +296,4 @@ class Plotter:
         Plotter.plot_norms(experiment, errorbar=errorbar, exclude_keys=exclude_keys)
         Plotter.plot_grads(experiment, errorbar=errorbar, exclude_keys=exclude_keys)
         Plotter.plot_margins(experiment, exclude_keys=exclude_keys)
+        Plotter.plot_preds(experiment, errorbar=errorbar, exclude_keys=exclude_keys)

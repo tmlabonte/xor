@@ -7,6 +7,24 @@ import numpy as np
 import yaml
 
 
+def sigmoid(x: float | np.ndarray) -> float | np.ndarray:
+    """Returns the sigmoid function applied to x."""
+    return 1 / (1 + np.exp(-x))
+
+
+def strtobool(value: str) -> bool:
+    """Converts a string to a boolean (case-insensitive)."""
+    true_values = {"y", "yes", "t", "true", "on", "1"}
+    false_values = {"n", "no", "f", "false", "off", "0"}
+
+    val = value.strip().lower()
+    if val in true_values:
+        return True
+    if val in false_values:
+        return False
+    raise ValueError(f"Please input a boolean. Current value: '{value}'")
+
+
 @dataclass(frozen=True)
 class FlowSequence:
     """Helper class for dumping long sequences in flow style."""
