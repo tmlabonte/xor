@@ -67,15 +67,12 @@ def _add_input_args(parser: Parser) -> None:
     )
     return parser
 
-
 def _add_initialization_parameters(args: Namespace) -> None:
-    """Sets initialization hyperparameters specified by Glasgow (2024)."""
-    psi = 1 / (math.log(args.d) ** args.C)
-    args.m = math.ceil(args.d / psi)
-    args.p = math.ceil(1 / psi)
-    args.eta = psi
-    args.theta = psi / math.sqrt(args.p)
-
+    """Sets initialization hyperparameters."""
+    args.p = 10 # args.p = 10 # args.p = math.ceil(math.log(args.d)) # log(d)
+    args.eta = 0.05 # args.eta = 0.05 # args.eta = 1 / (math.log(args.d)) # log^{-1}(d)
+    args.theta = 0.0001 # args.theta = 0.01 # args.theta = 1 / (math.log(args.d) ** args.C) # log^{-C}(d)
+    args.m = 5000 # args.m = math.ceil((args.d / (args.theta ** 2)))
 
 def parse_args() -> Namespace:
     """Parses input arguments and configures logger."""

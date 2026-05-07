@@ -10,6 +10,7 @@ from loguru import logger
 import numpy as np
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from xor.util import sigmoid
 
@@ -23,6 +24,78 @@ class ModelConfig:
     spurious: bool = False  # Whether w_sp should be tracked
     theta: float = 1  # Initialization scale
 
+class ThreeLayerMLP(nn.Module):
+    """Class for a 3-layer MLP with no metrics."""
+
+    def __init__(self, config: ModelConfig):
+        """Initializes a model."""
+        super().__init__()
+        logger.info(config)
+        self.config = config
+
+        self.fc1 = nn.Linear(config.d, config.p)
+        self.fc2 = nn.Linear(config.p, config.p)
+        self.fc_out = nn.Linear(config.p, 1)
+
+        self.vector_fns = {}
+        self.preds = {}
+
+    @torch.no_grad()
+    def norms(self):
+        return {}
+
+    @torch.no_grad()
+    def preds_norms(self):
+        return {}
+
+    @torch.no_grad()
+    def grads(self):
+        return {}
+
+    @torch.no_grad()
+    def step_preds(
+        self,
+        loss: str,
+        eta: float,
+        lmbda: float,
+        X: torch.Tensor,
+        y: torch.Tensor,
+        logits: torch.Tensor | None = None,
+    ) -> None:
+        return None
+
+    @torch.no_grad()
+    def margins(
+        self,
+        X: torch.Tensor,
+        y: torch.Tensor,
+        logits: torch.Tensor | None = None,
+        collate_fn: Callable[[torch.Tensor], float] = torch.mean,
+    ) -> dict[str, float]:
+        """Returns the margins of the neural network on a batch.
+
+        Collate_fn can be something like torch.mean or torch.min depending on
+        whether the average or worst-case margin is desired.
+        """
+
+        # Partitions batch into data with/without the spurious correlation.
+        sp = X[:, 2] == y
+        no_sp = X[:, 2] != y
+
+        if logits is None:
+            logits = self(X)
+
+        return {
+            "spurious": collate_fn(y[sp] * logits[sp]).item(),
+            "not spurious": collate_fn(y[no_sp] * logits[no_sp]).item(),
+        }
+
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc_out(x)
+        return x.squeeze()
 
 class Model(nn.Module):
     """Class for a single-hidden-layer neural network with metric tracking."""
@@ -49,11 +122,13 @@ class Model(nn.Module):
 
         # Set vector names and methods for tracking norms.
         self.vector_fns = {
+            "a": self.a,
             "w_sig": self.w_sigs,
             "w_opp": self.w_opps,
             "w_sp": self.w_sps,
             "w_perp": self.w_perps,
         }
+
         if not self.config.spurious:
             self.vector_fns.pop("w_sp")
 
@@ -90,17 +165,28 @@ class Model(nn.Module):
         """Returns a list of model neuron weights."""
         return list(zip(self.output.weight[0], self.hidden.weight))
 
+    def freeze_hidden(self) -> None:
+        """Freezes hidden layer to train output only."""
+        for p in self.hidden.parameters():
+            p.requires_grad = False
+
     @torch.no_grad()
-    def initialize_parameters(self) -> None:
+    def initialize_parameters(self, output_only=False) -> None:
         """Initializes parameters as uniform on the sphere."""
         # Initialize a_j = ε_j θ where ε_j ~ Unif({±1}).
         sign = torch.sign(torch.randn((self.config.p)))
         self.output.weight[0].copy_(sign * self.config.theta)
 
+        if output_only: return
+
         # Initialize w_j ~ Unif(S^{d-1}(θ)).
         w = torch.randn_like(self.hidden.weight)
         scaled_w = self.config.theta * (w / w.norm(dim=1, keepdim=True))
         self.hidden.weight.copy_(scaled_w)
+
+    @torch.no_grad()
+    def a(self) -> nn.Linear:
+        return Model.linear_like(weight=self.output.weight, grad=self.output.weight.grad)
 
     @torch.no_grad()
     def w_sigs(self) -> nn.Linear:
@@ -172,10 +258,26 @@ class Model(nn.Module):
     @torch.no_grad()
     def norms(self) -> dict[str, np.ndarray]:
         """Returns the norm of every weight across vector_fns."""
+        def norm(name, fn):
+            if name == "a": return torch.abs(fn().weight).cpu().numpy()
+            else: return fn().weight.norm(dim=1).cpu().numpy()
+
         return {
-            vector_name: vector_fn().weight.norm(dim=1).cpu().numpy()
+            vector_name: norm(vector_name, vector_fn)
             for vector_name, vector_fn in self.vector_fns.items()
         }
+
+    @torch.no_grad()
+    def weights(self) -> dict[int, np.ndarray]:
+        """Returns all weights where the key indexes dimension."""
+        # return {str(j + 1): self.hidden.weight[:, j].cpu().numpy()
+        #         for j in range(self.hidden.weight.shape[1])}
+        # return {str(j + 1): self.hidden.weight[0, j + 3].cpu().numpy()
+        #         for j in range(self.hidden.weight.shape[1] - 3)}
+        # return {str(j + 1): self.hidden.weight[0, j + 3].cpu().numpy()
+        #         for j in range(self.hidden.weight.shape[1] - 95)}
+        return {str(j + 1): self.hidden.weight[0, j].cpu().numpy()
+                for j in range(2)}
 
     @torch.no_grad()
     def preds_norms(self) -> dict[str, np.ndarray]:
@@ -190,6 +292,7 @@ class Model(nn.Module):
         """Returns the grad of every weight across vector_fns."""
         return {
             vector_name: vector_fn().weight.grad.mean(dim=1).cpu().numpy()
+            if vector_fn().weight.grad is not None else None
             for vector_name, vector_fn in self.vector_fns.items()
         }
 
@@ -261,6 +364,7 @@ class Model(nn.Module):
             sp_term /= self.preds["w_sp"].weight.squeeze()
 
             grads = {
+                "a": 0, # Hack
                 "w_sig": self.preds["w_sig"].weight * sig_opp_term,
                 "w_opp": self.preds["w_opp"].weight * -sig_opp_term,
                 "w_sp": self.preds["w_sp"].weight * sp_term.unsqueeze(-1),
@@ -272,6 +376,7 @@ class Model(nn.Module):
             sp_term /= self.preds["w_sp"].weight.squeeze()
 
             grads = {
+                "a": 0, # Hack
                 "w_sig": 0,
                 "w_opp": 0,
                 "w_sp": self.preds["w_sp"].weight * sp_term.unsqueeze(-1),

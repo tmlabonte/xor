@@ -12,6 +12,7 @@ from xor.constants import IMG_DIR
 from xor.experiment import Experiment
 from xor.metrics import Metrics, NamedMetricFn
 
+plt.figure(figsize=(8, 5))
 
 class Plotter:
     """Class for various helpful plotting functions."""
@@ -38,39 +39,97 @@ class Plotter:
         data: pd.DataFrame,
         named_metric_fn: NamedMetricFn,
         errorbar: str | None = None,
+        legend: bool = True,
     ) -> None:
         """Creates the plot and saves to disk."""
 
         # Automatically plot at full steps and 1/4 steps.
-        sns.set_theme()
-        for ratio in [0.25, 1.0]:
-            thresh = int(ratio * data["step"].max())
+        sns.set_theme(
+            style="white",
+            context="paper",
+            font_scale=2,
+        )
+        # ratios = [0.25, 1.0]
+        # ratios = [0.0125, 0.125, 0.25, 1.0]
+        # ratios = [0.025, 0.15, 0.3, 1.0]
+        ratios = [0.025, 0.5, 1.0] 
+        ratios = [(0, 0.025), (0.025, 0.167), (0.167, 1.0), (0, 1.0)]
+        # ratios = [0.02, 0.25, 0.5, 1.0]
+        for ratio in ratios:
+            lower = int(ratio[0] * data["step"].max())
+            upper = int(ratio[1] * data["step"].max())
+
+            palette = None
+            if "w_perp" in data[named_metric_fn.key].unique():
+                palette = {
+                    "w_sig": "tab:blue",
+                    "w_opp": "tab:orange",
+                    "w_sp": "tab:green",
+                    "w_perp": "tab:red",
+                }
+
+            data[named_metric_fn.key] = data[named_metric_fn.key].replace({
+                "spurious": "majority group",
+                "not spurious": "minority group",
+            })
 
             # Plot every single neuron if they exist and errorbar is not specified.
             # Otherwise aggregate over neurons to plot mean and errorbar.
-            sns.lineplot(
+            ax = sns.lineplot(
                 # data=data[data["step"] <= thresh],
-                data=data.loc[data["step"] <= thresh].reset_index(drop=True),
+                # data=data.loc[lower <= data["step"] <= upper].reset_index(drop=True),
+                data=data.loc[data["step"].between(lower, upper)].reset_index(drop=True),
                 x="step",
                 y=named_metric_fn.name,
                 hue=named_metric_fn.key,
+                palette=palette,
                 errorbar=errorbar,
+                legend=legend,
                 units="neuron" if "neuron" in data.columns else None,
                 estimator=(
                     None if errorbar is None and "neuron" in data.columns else "mean"
                 ),
+                linewidth=3,
             )
+
+            # plt.rcParams["text.usetex"] = True
+            # plt.rcParams["text.latex.preamble"] = r"\usepackage{bm}"
+            label_map = {
+                "w_sig": r"$\mathbf{w}_{\mathrm{sig}}$",
+                "w_opp": r"$\mathbf{w}_{\mathrm{opp}}$",
+                "w_sp": r"$\mathbf{w}_{\mathrm{sp}}$",
+                "w_perp": r"$\mathbf{w}_{\perp}$",
+            }
+            # label_map = {
+            #     "w_sig": r"$\bm{w}_{\textnormal{sig}}$",
+            #     "w_opp": r"$\bm{w}_{\textnormal{opp}}$",
+            #     "w_sp": r"$\bm{w}_{\textnormal{sp}}$",
+            #     "w_perp": r"$\bm{w}_{\perp}$",
+            # }
+
+            handles, labels = ax.get_legend_handles_labels()
+
+            ax.legend(
+                handles,
+                [label_map.get(l, l) for l in labels],
+                loc="lower center",
+                bbox_to_anchor=(0.5, 1.02),
+                ncol=4,
+                frameon=False,
+            )
+            ax.grid(True, alpha=0.5)
+            sns.despine()
 
             # Save to all experiment directories.
             for experiment in experiments:
                 plt.title("")  # Clears title
-                plt.title(Plotter._title(experiment))
+                # plt.title(Plotter._title(experiment))
                 img_dir = os.path.join(
-                    experiment.config.exp_dir, IMG_DIR, f"step={thresh}"
+                    experiment.config.exp_dir, IMG_DIR, f"step={upper}"
                 )
                 os.makedirs(img_dir, exist_ok=True)
                 plt.savefig(
-                    os.path.join(img_dir, f"{named_metric_fn.name}.png"),
+                    os.path.join(img_dir, f"{named_metric_fn.name}_{lower}_{upper}.png"),
                     bbox_inches="tight",
                     dpi=600,
                 )
@@ -166,6 +225,7 @@ class Plotter:
         accessor: Callable[[Metrics], dict[str, np.ndarray]],
         named_metric_fn: NamedMetricFn,
         errorbar: str | None = None,
+        legend: bool = True,
         exclude_keys: Sequence[str] | None = None,
         skip_zeroth_step: bool = False,
     ) -> None:
@@ -185,6 +245,7 @@ class Plotter:
             data=data,
             named_metric_fn=named_metric_fn,
             errorbar=errorbar,
+            legend=legend,
         )
 
     @staticmethod
@@ -211,8 +272,25 @@ class Plotter:
         Plotter._plot(
             experiments=[experiment],
             accessor=lambda metrics: metrics.norms,
-            named_metric_fn=NamedMetricFn("norm", "weight"),
+            named_metric_fn=NamedMetricFn("norm", "vector"),
             errorbar=errorbar,
+            exclude_keys=exclude_keys,
+            skip_zeroth_step=False,
+        )
+
+    @staticmethod
+    def plot_weights(
+        experiment: Experiment,
+        errorbar: str | None = None,
+        exclude_keys: Sequence[str] | None = None,
+    ) -> None:
+        """Plots vector weights against train steps."""
+        Plotter._plot(
+            experiments=[experiment],
+            accessor=lambda metrics: metrics.weights,
+            named_metric_fn=NamedMetricFn("weight", "vector"),
+            errorbar=errorbar,
+            # legend=False,
             exclude_keys=exclude_keys,
             skip_zeroth_step=False,
         )
@@ -227,7 +305,7 @@ class Plotter:
         Plotter._plot(
             experiments=[experiment],
             accessor=lambda metrics: metrics.grads,
-            named_metric_fn=NamedMetricFn("grad", "weight"),
+            named_metric_fn=NamedMetricFn("grad", "vector"),
             errorbar=errorbar,
             exclude_keys=exclude_keys,
             skip_zeroth_step=True,
@@ -292,8 +370,10 @@ class Plotter:
         exclude_keys: Sequence[str] | None = None,
     ) -> None:
         """Plots all single-experiment metrics."""
+        exclude_keys = ["a"]
         Plotter.plot_losses(experiment, exclude_keys=exclude_keys)
         Plotter.plot_norms(experiment, errorbar=errorbar, exclude_keys=exclude_keys)
+        Plotter.plot_weights(experiment, errorbar=errorbar, exclude_keys=exclude_keys)
         Plotter.plot_grads(experiment, errorbar=errorbar, exclude_keys=exclude_keys)
         Plotter.plot_margins(experiment, exclude_keys=exclude_keys)
         Plotter.plot_preds(experiment, errorbar=errorbar, exclude_keys=exclude_keys)

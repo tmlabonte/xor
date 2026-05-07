@@ -56,7 +56,8 @@ def main(args: Namespace) -> None:
     # Runs the experiment.
     run_experiment(
         dataset_configs["train_spurious"],
-        [dataset_configs["test_iid"], dataset_configs["test_spurious"]],
+        # [dataset_configs["test_iid"], dataset_configs["test_spurious"]],
+        [dataset_configs["test_spurious"]],
         model_config,
         experiment_config,
     )

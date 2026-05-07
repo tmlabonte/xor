@@ -32,6 +32,7 @@ class ExperimentConfig:
     exp_dir: str = os.path.join(OUT_DIR, TMP_DIR)  # Experiment-level output dir
     margin: str = "mean"  # Whether to track the mean or min margin.
     device: str = "cuda" if torch.cuda.is_available() else "cpu"  # Training device
+    save_metrics: bool = False # Whether to save metrics; memory intensive
 
 
 class Experiment:
@@ -88,6 +89,7 @@ class Experiment:
         self.metrics = Metrics.create(
             keys=self.model.vector_fns.keys(),
             p=self.model.config.p,
+            d=self.model.config.d,
             train_steps=len(train_dataset) + 1,  # Add one to log initial norms
         )
 
@@ -176,7 +178,7 @@ class Experiment:
     def train(self) -> tuple[Model, Metrics]:
         """Trains on the train dataloader."""
         logger.info("Training...")
-        self.metrics.record(0, norms=self.model.norms())
+        self.metrics.record(0, norms=self.model.norms(), weights=self.model.weights())
 
         self.model.train()
         name = self.train_loader.dataset.name
@@ -189,6 +191,7 @@ class Experiment:
                 loss, logits = self.step(X, y)
 
             # Compute theoretical predictions for model weights.
+            """
             self.model.step_preds(
                 self.config.loss,
                 self.config.eta,
@@ -197,17 +200,19 @@ class Experiment:
                 y,
                 logits=logits,
             )
+            """
 
             # Record relevant step metrics in the self.metrics object.
             self.metrics.record(
                 step + 1,
                 losses={"train loss": loss.item()},
                 norms=self.model.norms(),
+                weights=self.model.weights(),
                 grads=self.model.grads(),
                 margins=self.model.margins(
                     X, y, logits=logits, collate_fn=self.margin_fn
                 ),
-                preds=self.model.preds_norms(),
+                # preds=self.model.preds_norms(),
             )
 
         # Save model weights to disk.
@@ -216,9 +221,10 @@ class Experiment:
         logger.info(f"Model weights saved to {weights_path}")
 
         # Saves train metrics to disk.
-        metrics_path = os.path.join(self.config.exp_dir, "metrics.yaml")
-        dump_dataclass_to_yaml(self.metrics, metrics_path)
-        logger.info(f"Train metrics saved to {metrics_path}")
+        if self.config.save_metrics:
+            metrics_path = os.path.join(self.config.exp_dir, "metrics.yaml")
+            dump_dataclass_to_yaml(self.metrics, metrics_path)
+            logger.info(f"Train metrics saved to {metrics_path}")
 
         return self.model, self.metrics
 
@@ -244,8 +250,9 @@ class Experiment:
             self._test(loader)
 
         # Save test metrics to disk.
-        metrics_path = os.path.join(self.config.exp_dir, "metrics.yaml")
-        dump_dataclass_to_yaml(self.metrics, metrics_path)
-        logger.info(f"Test metrics saved to {metrics_path}")
+        if self.config.save_metrics:
+            metrics_path = os.path.join(self.config.exp_dir, "metrics.yaml")
+            dump_dataclass_to_yaml(self.metrics, metrics_path)
+            logger.info(f"Test metrics saved to {metrics_path}")
 
         return self.metrics
