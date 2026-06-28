@@ -15,10 +15,8 @@ class Metrics:
     losses: dict[str, np.ndarray] = field(default_factory=dict)
     accuracies: dict[str, float] = field(default_factory=dict)
     norms: dict[str, np.ndarray] = field(default_factory=dict)
-    weights: dict[str, np.ndarray] = field(default_factory=dict)
     grads: dict[str, np.ndarray] = field(default_factory=dict)
     margins: dict[str, np.ndarray] = field(default_factory=dict)
-    preds: dict[str, np.ndarray] = field(default_factory=dict)
 
     @classmethod
     def create(cls, keys: Sequence[str], p: int, d: int, train_steps: int) -> Self:
@@ -30,17 +28,11 @@ class Metrics:
         return cls(
             losses={"train loss": np.zeros(train_steps)},
             norms=make_array(),
-            # weights={str(k + 1): np.zeros((p, train_steps)) for k in range(d)},
-            # weights={str(k + 1): np.zeros(train_steps) for k in range(d - 3)},
-            # weights={str(k + 1): np.zeros(train_steps) for k in range(d - 95)},
-            weights={str(k + 1): np.zeros(train_steps) for k in range(2)},
-            # weights={str(k + 1): np.zeros((3, train_steps)) for k in range(2)},
             grads=make_array(),
             margins={
                 "spurious": np.zeros(train_steps),
                 "not spurious": np.zeros(train_steps),
             },
-            preds=make_array(),
         )
 
     def _record(
@@ -70,10 +62,8 @@ class Metrics:
             "losses": self.losses,
             "accuracies": self.accuracies,
             "norms": self.norms,
-            "weights": self.weights,
             "grads": self.grads,
             "margins": self.margins,
-            "preds": self.preds,
         }
 
         for metric_name, values in metrics.items():

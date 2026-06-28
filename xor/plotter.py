@@ -49,12 +49,9 @@ class Plotter:
             context="paper",
             font_scale=2,
         )
-        # ratios = [0.25, 1.0]
-        # ratios = [0.0125, 0.125, 0.25, 1.0]
-        # ratios = [0.025, 0.15, 0.3, 1.0]
-        ratios = [0.025, 0.5, 1.0] 
+
+        # Hardcoded phase ratios; change if desired.
         ratios = [(0, 0.025), (0.025, 0.167), (0.167, 1.0), (0, 1.0)]
-        # ratios = [0.02, 0.25, 0.5, 1.0]
         for ratio in ratios:
             lower = int(ratio[0] * data["step"].max())
             upper = int(ratio[1] * data["step"].max())
@@ -76,8 +73,6 @@ class Plotter:
             # Plot every single neuron if they exist and errorbar is not specified.
             # Otherwise aggregate over neurons to plot mean and errorbar.
             ax = sns.lineplot(
-                # data=data[data["step"] <= thresh],
-                # data=data.loc[lower <= data["step"] <= upper].reset_index(drop=True),
                 data=data.loc[data["step"].between(lower, upper)].reset_index(drop=True),
                 x="step",
                 y=named_metric_fn.name,
@@ -92,20 +87,12 @@ class Plotter:
                 linewidth=3,
             )
 
-            # plt.rcParams["text.usetex"] = True
-            # plt.rcParams["text.latex.preamble"] = r"\usepackage{bm}"
             label_map = {
                 "w_sig": r"$\mathbf{w}_{\mathrm{sig}}$",
                 "w_opp": r"$\mathbf{w}_{\mathrm{opp}}$",
                 "w_sp": r"$\mathbf{w}_{\mathrm{sp}}$",
                 "w_perp": r"$\mathbf{w}_{\perp}$",
             }
-            # label_map = {
-            #     "w_sig": r"$\bm{w}_{\textnormal{sig}}$",
-            #     "w_opp": r"$\bm{w}_{\textnormal{opp}}$",
-            #     "w_sp": r"$\bm{w}_{\textnormal{sp}}$",
-            #     "w_perp": r"$\bm{w}_{\perp}$",
-            # }
 
             handles, labels = ax.get_legend_handles_labels()
 
@@ -122,8 +109,8 @@ class Plotter:
 
             # Save to all experiment directories.
             for experiment in experiments:
-                plt.title("")  # Clears title
-                # plt.title(Plotter._title(experiment))
+                # plt.title("")  # Clears title
+                plt.title(Plotter._title(experiment))
                 img_dir = os.path.join(
                     experiment.config.exp_dir, IMG_DIR, f"step={upper}"
                 )
@@ -279,23 +266,6 @@ class Plotter:
         )
 
     @staticmethod
-    def plot_weights(
-        experiment: Experiment,
-        errorbar: str | None = None,
-        exclude_keys: Sequence[str] | None = None,
-    ) -> None:
-        """Plots vector weights against train steps."""
-        Plotter._plot(
-            experiments=[experiment],
-            accessor=lambda metrics: metrics.weights,
-            named_metric_fn=NamedMetricFn("weight", "vector"),
-            errorbar=errorbar,
-            # legend=False,
-            exclude_keys=exclude_keys,
-            skip_zeroth_step=False,
-        )
-
-    @staticmethod
     def plot_grads(
         experiment: Experiment,
         errorbar: str | None = None,
@@ -327,43 +297,6 @@ class Plotter:
         )
 
     @staticmethod
-    def plot_preds(
-        experiment: Experiment,
-        errorbar: str | None = None,
-        exclude_keys: Sequence[str] | None = None,
-    ) -> None:
-        """Plots vector norm predictions against train steps."""
-        Plotter._plot(
-            experiments=[experiment],
-            accessor=lambda metrics: metrics.preds,
-            named_metric_fn=NamedMetricFn("pred", "weight"),
-            errorbar=errorbar,
-            exclude_keys=exclude_keys,
-            skip_zeroth_step=True,
-        )
-
-    @staticmethod
-    def plot_grad_errors(
-        experiments: Sequence[Experiment],
-        errorbar: str | None = None,
-        exclude_keys: Sequence[str] | None = None,
-    ) -> None:
-        """Plots grad errors against train steps."""
-        # Compute absolute difference between L0 and Lp grads.
-        error_fn = NamedMetricFn(
-            "grad error", "weight", metric_fn=lambda x: np.abs(x[0] - x[1])
-        )
-
-        Plotter._plot(
-            experiments=experiments,
-            accessor=lambda metrics: metrics.grads,
-            named_metric_fn=error_fn,
-            errorbar=errorbar,
-            exclude_keys=exclude_keys,
-            skip_zeroth_step=True,
-        )
-
-    @staticmethod
     def plot_all(
         experiment: Experiment,
         errorbar: str | None = None,
@@ -373,7 +306,5 @@ class Plotter:
         exclude_keys = ["a"]
         Plotter.plot_losses(experiment, exclude_keys=exclude_keys)
         Plotter.plot_norms(experiment, errorbar=errorbar, exclude_keys=exclude_keys)
-        Plotter.plot_weights(experiment, errorbar=errorbar, exclude_keys=exclude_keys)
         Plotter.plot_grads(experiment, errorbar=errorbar, exclude_keys=exclude_keys)
         Plotter.plot_margins(experiment, exclude_keys=exclude_keys)
-        Plotter.plot_preds(experiment, errorbar=errorbar, exclude_keys=exclude_keys)

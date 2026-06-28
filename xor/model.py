@@ -24,78 +24,6 @@ class ModelConfig:
     spurious: bool = False  # Whether w_sp should be tracked
     theta: float = 1  # Initialization scale
 
-class ThreeLayerMLP(nn.Module):
-    """Class for a 3-layer MLP with no metrics."""
-
-    def __init__(self, config: ModelConfig):
-        """Initializes a model."""
-        super().__init__()
-        logger.info(config)
-        self.config = config
-
-        self.fc1 = nn.Linear(config.d, config.p)
-        self.fc2 = nn.Linear(config.p, config.p)
-        self.fc_out = nn.Linear(config.p, 1)
-
-        self.vector_fns = {}
-        self.preds = {}
-
-    @torch.no_grad()
-    def norms(self):
-        return {}
-
-    @torch.no_grad()
-    def preds_norms(self):
-        return {}
-
-    @torch.no_grad()
-    def grads(self):
-        return {}
-
-    @torch.no_grad()
-    def step_preds(
-        self,
-        loss: str,
-        eta: float,
-        lmbda: float,
-        X: torch.Tensor,
-        y: torch.Tensor,
-        logits: torch.Tensor | None = None,
-    ) -> None:
-        return None
-
-    @torch.no_grad()
-    def margins(
-        self,
-        X: torch.Tensor,
-        y: torch.Tensor,
-        logits: torch.Tensor | None = None,
-        collate_fn: Callable[[torch.Tensor], float] = torch.mean,
-    ) -> dict[str, float]:
-        """Returns the margins of the neural network on a batch.
-
-        Collate_fn can be something like torch.mean or torch.min depending on
-        whether the average or worst-case margin is desired.
-        """
-
-        # Partitions batch into data with/without the spurious correlation.
-        sp = X[:, 2] == y
-        no_sp = X[:, 2] != y
-
-        if logits is None:
-            logits = self(X)
-
-        return {
-            "spurious": collate_fn(y[sp] * logits[sp]).item(),
-            "not spurious": collate_fn(y[no_sp] * logits[no_sp]).item(),
-        }
-
-
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc_out(x)
-        return x.squeeze()
 
 class Model(nn.Module):
     """Class for a single-hidden-layer neural network with metric tracking."""
@@ -268,26 +196,6 @@ class Model(nn.Module):
         }
 
     @torch.no_grad()
-    def weights(self) -> dict[int, np.ndarray]:
-        """Returns all weights where the key indexes dimension."""
-        # return {str(j + 1): self.hidden.weight[:, j].cpu().numpy()
-        #         for j in range(self.hidden.weight.shape[1])}
-        # return {str(j + 1): self.hidden.weight[0, j + 3].cpu().numpy()
-        #         for j in range(self.hidden.weight.shape[1] - 3)}
-        # return {str(j + 1): self.hidden.weight[0, j + 3].cpu().numpy()
-        #         for j in range(self.hidden.weight.shape[1] - 95)}
-        return {str(j + 1): self.hidden.weight[0, j].cpu().numpy()
-                for j in range(2)}
-
-    @torch.no_grad()
-    def preds_norms(self) -> dict[str, np.ndarray]:
-        """Returns the norm of every predicted weight."""
-        return {
-            vector_name: vector.weight.norm(dim=1).cpu().numpy()
-            for vector_name, vector in self.preds.items()
-        }
-
-    @torch.no_grad()
     def grads(self) -> dict[str, np.ndarray]:
         """Returns the grad of every weight across vector_fns."""
         return {
@@ -320,76 +228,6 @@ class Model(nn.Module):
         return {
             "spurious": collate_fn(y[sp] * logits[sp]).item(),
             "not spurious": collate_fn(y[no_sp] * logits[no_sp]).item(),
-        }
-
-    @torch.no_grad()
-    def step_preds(
-        self,
-        loss: str,
-        eta: float,
-        lmbda: float,
-        X: torch.Tensor,
-        y: torch.Tensor,
-        logits: torch.Tensor | None = None,
-    ) -> None:
-        """Updates the next-step weights according to theoretical predictions."""
-
-        if not self.config.spurious:
-            raise NotImplementedError()
-
-        # Compute norms and margins for the current batch.
-        norms = self.preds_norms()
-        margins = self.margins(X, y, logits=logits, collate_fn=torch.mean)
-        full_norm = torch.cat(
-            (
-                self.preds["w_sig"].weight + self.preds["w_opp"].weight,
-                self.preds["w_sp"].weight,
-                self.preds["w_perp"].weight,
-            ),
-            dim=1,
-        ).norm(dim=1)
-
-        if loss == "l0":
-            # 1 / sqrt(2π) * ||w|| / ||w_perp|| * exp(-||w_sp||^2 / 2||w_perp||^2).
-            sig_opp_term = (1 / math.sqrt(2 * math.pi)) * full_norm / norms["w_perp"]
-            sig_opp_term *= torch.tensor(
-                np.exp(-norms["w_sp"] ** 2 / (2 * norms["w_perp"] ** 2))
-            )
-
-            # Convert from (neurons,) to (neurons, 2)
-            sig_opp_term = torch.column_stack((sig_opp_term, sig_opp_term))
-
-            # a (0.5 - lambda) / w_sp, assumes V = 0 and a = ||w||.
-            sp_term = full_norm * (0.5 - lmbda)
-            sp_term /= self.preds["w_sp"].weight.squeeze()
-
-            grads = {
-                "a": 0, # Hack
-                "w_sig": self.preds["w_sig"].weight * sig_opp_term,
-                "w_opp": self.preds["w_opp"].weight * -sig_opp_term,
-                "w_sp": self.preds["w_sp"].weight * sp_term.unsqueeze(-1),
-                "w_perp": 0,
-            }
-        elif loss == "lp":
-            # a (1 - lambda - sigmoid(margin)) / w_sp, assumes V = 0 and a = ||w||.
-            sp_term = full_norm * (1 - lmbda - sigmoid(margins["spurious"]))
-            sp_term /= self.preds["w_sp"].weight.squeeze()
-
-            grads = {
-                "a": 0, # Hack
-                "w_sig": 0,
-                "w_opp": 0,
-                "w_sp": self.preds["w_sp"].weight * sp_term.unsqueeze(-1),
-                "w_perp": 0,
-            }
-        else:
-            raise ValueError(
-                ("Please set loss to 'lp' or 'l0'." f" Current value: {loss}")
-            )
-
-        self.preds = {
-            vector_name: Model.linear_like(vector.weight + eta * grads[vector_name])
-            for vector_name, vector in self.preds.items()
         }
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:

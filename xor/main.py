@@ -44,20 +44,23 @@ def main(args: Namespace) -> None:
     """Train and test on XOR dataset with spurious correlation."""
     # Instantiate dataset, model, and experiment configs.
     dataset_configs = make_dataset_configs(args)
-    model_config = ModelConfig(d=args.d, p=args.p, theta=args.theta, spurious=True)
-    key = "-hybrid" if args.hybrid else ""
+    model_config = ModelConfig(
+        d=args.d,
+        p=args.p,
+        theta=args.theta,
+        spurious=args.spurious,
+    )
+    key="spurious-" if args.spurious else ""
     experiment_config = ExperimentConfig(
-        name=f"xor-spurious-{args.loss}{key}",
+        name=f"xor-{key}{args.loss}",
         loss=args.loss,
         eta=args.eta,
-        hybrid=args.hybrid,
     )
 
     # Runs the experiment.
     run_experiment(
         dataset_configs["train_spurious"],
-        # [dataset_configs["test_iid"], dataset_configs["test_spurious"]],
-        [dataset_configs["test_spurious"]],
+        [dataset_configs["test_iid"], dataset_configs["test_spurious"]],
         model_config,
         experiment_config,
     )

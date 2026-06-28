@@ -54,7 +54,6 @@ class Dataset(IterableDataset):
 
     def generate_data(self, rng: torch.Generator) -> tuple[torch.Tensor, torch.Tensor]:
         """Generates a single batch of data and targets."""
-        """
         # Generate i.i.d. data on {±1}^d with target XOR(x_1, x_2).
         randints = torch.randint(0, 2, (self.config.m, self.config.d), generator=rng)
         data = (randints * 2 - 1).float()
@@ -65,18 +64,6 @@ class Dataset(IterableDataset):
             data[:, 2] = targets
             flip_mask = torch.rand(self.config.m, generator=rng) < self.config.lmbda
             data[flip_mask, 2] *= -1
-
-        """
-        # Reverse complexity of spurious feature and core feature
-        randints = torch.randint(0, 2, (self.config.m, self.config.d), generator=rng)
-        data = (randints * 2 - 1).float()
-        targets = -(data[:, 0] * data[:, 1])
-        flip_mask = torch.rand(self.config.m, generator=rng) < self.config.lmbda
-        targets[flip_mask] *= -1
-
-        data[:, 2] = targets
-        flip_mask = torch.rand(self.config.m, generator=rng) < (2*self.config.lmbda)
-        data[flip_mask, 2] *= -1
 
         return data, targets
 

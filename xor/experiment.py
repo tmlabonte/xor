@@ -27,7 +27,6 @@ class ExperimentConfig:
 
     name: str  # Experiment name
     loss: str  # Loss function
-    hybrid: bool = False  # Whether to use hybrid step
     eta: float = 0.01  # Learning rate
     exp_dir: str = os.path.join(OUT_DIR, TMP_DIR)  # Experiment-level output dir
     margin: str = "mean"  # Whether to track the mean or min margin.
@@ -148,71 +147,27 @@ class Experiment:
         self.optimizer.step()
         return loss, logits
 
-    def hybrid_step(
-        self,
-        X: torch.Tensor,
-        y: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Steps with Lp loss for w_sp and L0 loss for everything else."""
-        self.optimizer.zero_grad()
-        logits = self.model(X)
-
-        loss = self._l0_loss(logits, y)
-        loss.backward(retain_graph=True)
-
-        # Compute Lp grads using autograd.
-        sp_loss = self._lp_loss(logits, y)
-        sp_grad = torch.autograd.grad(
-            sp_loss,
-            self.model.hidden.weight,
-        )[0]
-
-        # Copy Lp grads to w_sp.
-        with torch.no_grad():
-            self.model.hidden.weight.grad[:, 2] = sp_grad[:, 2]
-
-        self.optimizer.step()
-
-        return loss, logits
-
     def train(self) -> tuple[Model, Metrics]:
         """Trains on the train dataloader."""
         logger.info("Training...")
-        self.metrics.record(0, norms=self.model.norms(), weights=self.model.weights())
+        self.metrics.record(0, norms=self.model.norms())
 
         self.model.train()
         name = self.train_loader.dataset.name
         for step, (X, y) in enumerate(tqdm(self.train_loader, desc=name)):
             X, y = X.to(self.config.device), y.to(self.config.device)
 
-            if self.config.hybrid:
-                loss, logits = self.hybrid_step(X, y)
-            else:
-                loss, logits = self.step(X, y)
-
-            # Compute theoretical predictions for model weights.
-            """
-            self.model.step_preds(
-                self.config.loss,
-                self.config.eta,
-                self.train_loader.dataset.config.lmbda,
-                X,
-                y,
-                logits=logits,
-            )
-            """
+            loss, logits = self.step(X, y)
 
             # Record relevant step metrics in the self.metrics object.
             self.metrics.record(
                 step + 1,
                 losses={"train loss": loss.item()},
                 norms=self.model.norms(),
-                weights=self.model.weights(),
                 grads=self.model.grads(),
                 margins=self.model.margins(
                     X, y, logits=logits, collate_fn=self.margin_fn
                 ),
-                # preds=self.model.preds_norms(),
             )
 
         # Save model weights to disk.
